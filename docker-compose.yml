@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
-  app:
+  finance-tracker:
     build: .
+    container_name: finance-tracker
     ports:
-      - "8000:80"
+      - "8000:80"  # Maps port 8000 on your host to port 80 in the container
     volumes:
-      - .:/var/www/html
-      # We ensure host data folder syncs but handles permissions via Docker setups
-    environment:
-      - PHP_DISPLAY_ERRORS=1
+      # This maps your local 'data' folder to the container's 'data' folder.
+      # This ensures your finance.db file survives container rebuilds.
+      - ./data:/var/www/html/data
+    restart: unless-stopped
