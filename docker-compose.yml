@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      # We ensure host data folder syncs but handles permissions via Docker setups
+    environment:
+      - PHP_DISPLAY_ERRORS=1
