@@ -35,7 +35,7 @@ ob_start();
     </div>
     <div class="bg-dark-800/80 backdrop-blur-md px-6 py-3 rounded-xl border border-dark-700/50 shadow-lg text-right">
         <p class="text-sm text-gray-400 mb-1">Total Monthly Fixed</p>
-        <p class="text-2xl font-bold text-orange-400">$<?= number_format($totalCommitments, 2) ?></p>
+        <p class="text-2xl font-bold text-orange-400">RM <?= number_format($totalCommitments, 2) ?></p>
     </div>
 </div>
 
@@ -60,7 +60,7 @@ ob_start();
                         </div>
                         <div>
                             <h4 class="text-lg font-bold text-white mb-0.5"><?= htmlspecialchars($c['name']) ?></h4>
-                            <p class="text-lg font-medium text-gray-300">$<?= number_format($c['amount'], 2) ?></p>
+                            <p class="text-lg font-medium text-gray-300">RM <?= number_format($c['amount'], 2) ?></p>
                         </div>
                     </div>
                     <form method="POST" action="/commitments" onsubmit="return confirm('Delete this commitment?');">
@@ -92,10 +92,10 @@ ob_start();
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-400 mb-1.5 ml-1">Amount ($)</label>
+                    <label class="block text-sm font-medium text-gray-400 mb-1.5 ml-1">Amount (RM)</label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500">
-                            <span class="font-medium">$</span>
+                            <span class="font-medium">RM</span>
                         </div>
                         <input type="number" step="0.01" min="0.01" name="amount" required placeholder="0.00"
                             class="w-full pl-9 pr-4 py-3 bg-dark-900 border border-dark-600 rounded-xl focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 outline-none text-white placeholder-gray-600 transition-all shadow-inner">

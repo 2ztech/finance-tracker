@@ -73,5 +73,28 @@ class Database {
             $defaultPassword = password_hash('admin', PASSWORD_DEFAULT);
             $db->exec("INSERT INTO users (username, password_hash) VALUES ('admin', '$defaultPassword')");
         }
+
+        // Setup default categories
+        $stmt = $db->query("SELECT COUNT(*) FROM categories");
+        if ($stmt->fetchColumn() == 0) {
+            $defaultCategories = [
+                ['name' => 'Food & Dining', 'type' => 'expense', 'color_hex' => '#ef4444'],
+                ['name' => 'Fuel & Transport', 'type' => 'expense', 'color_hex' => '#f97316'],
+                ['name' => 'Utilities', 'type' => 'expense', 'color_hex' => '#eab308'],
+                ['name' => 'Groceries', 'type' => 'expense', 'color_hex' => '#84cc16'],
+                ['name' => 'Entertainment', 'type' => 'expense', 'color_hex' => '#06b6d4'],
+                ['name' => 'Healthcare', 'type' => 'expense', 'color_hex' => '#ec4899'],
+                ['name' => 'Motorcycle Maintenance', 'type' => 'expense', 'color_hex' => '#64748b'],
+                ['name' => 'Subscriptions', 'type' => 'expense', 'color_hex' => '#8b5cf6'],
+                ['name' => 'Salary', 'type' => 'income', 'color_hex' => '#10b981'],
+                ['name' => 'Side Hustle', 'type' => 'income', 'color_hex' => '#3b82f6'],
+                ['name' => 'Miscellaneous', 'type' => 'income', 'color_hex' => '#14b8a6']
+            ];
+            
+            $insertCat = $db->prepare("INSERT INTO categories (name, type, color_hex) VALUES (?, ?, ?)");
+            foreach ($defaultCategories as $cat) {
+                $insertCat->execute([$cat['name'], $cat['type'], $cat['color_hex']]);
+            }
+        }
     }
 }

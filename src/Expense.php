@@ -28,6 +28,12 @@ class Expense {
         return (float) $stmt->fetchColumn();
     }
 
+    public static function getTotalIncomeAllTime(): float {
+        $db = Database::getConnection();
+        $stmt = $db->query("SELECT SUM(amount) FROM transactions WHERE type = 'income'");
+        return (float) $stmt->fetchColumn();
+    }
+
     public static function getTotalExpense(string $month, string $year): float {
         $db = Database::getConnection();
         $startDate = "$year-$month-01";
@@ -35,6 +41,12 @@ class Expense {
         
         $stmt = $db->prepare("SELECT SUM(amount) FROM transactions WHERE type = 'expense' AND date >= ? AND date <= ?");
         $stmt->execute([$startDate, $endDate]);
+        return (float) $stmt->fetchColumn();
+    }
+
+    public static function getTotalExpenseAllTime(): float {
+        $db = Database::getConnection();
+        $stmt = $db->query("SELECT SUM(amount) FROM transactions WHERE type = 'expense'");
         return (float) $stmt->fetchColumn();
     }
 
