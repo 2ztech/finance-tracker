@@ -29,6 +29,10 @@ if (!Auth::isLoggedIn() && $route !== 'login') {
     exit;
 }
 
+if (Auth::isLoggedIn()) {
+    Expense::processDueCommitments();
+}
+
 // Define custom routes inside `index.php`
 if ($route === 'settings/password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
@@ -90,7 +94,7 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (count($data) >= 5) {
                         $date = $data[0];
                         $type = $data[1];
-                        $amount = (float)$data[2];
+                        $amount = round((float)$data[2], 2);
                         $categoryName = $data[3];
                         $description = $data[4];
 

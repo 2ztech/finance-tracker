@@ -23,15 +23,15 @@ class Expense {
         $startDate = "$year-$month-01";
         $endDate = date("Y-m-t", strtotime($startDate));
         
-        $stmt = $db->prepare("SELECT SUM(amount) FROM transactions WHERE type = 'income' AND date >= ? AND date <= ?");
+        $stmt = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'income' AND date >= ? AND date <= ?");
         $stmt->execute([$startDate, $endDate]);
-        return (float) $stmt->fetchColumn();
+        return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function getTotalIncomeAllTime(): float {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT SUM(amount) FROM transactions WHERE type = 'income'");
-        return (float) $stmt->fetchColumn();
+        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'income'");
+        return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function getTotalExpense(string $month, string $year): float {
@@ -39,15 +39,15 @@ class Expense {
         $startDate = "$year-$month-01";
         $endDate = date("Y-m-t", strtotime($startDate));
         
-        $stmt = $db->prepare("SELECT SUM(amount) FROM transactions WHERE type = 'expense' AND date >= ? AND date <= ?");
+        $stmt = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'expense' AND date >= ? AND date <= ?");
         $stmt->execute([$startDate, $endDate]);
-        return (float) $stmt->fetchColumn();
+        return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function getTotalExpenseAllTime(): float {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT SUM(amount) FROM transactions WHERE type = 'expense'");
-        return (float) $stmt->fetchColumn();
+        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'expense'");
+        return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function getExpensesByCategory(string $month, string $year): array {
@@ -56,7 +56,7 @@ class Expense {
         $endDate = date("Y-m-t", strtotime($startDate));
         
         $query = "
-            SELECT c.name, c.color_hex, SUM(t.amount) as total
+            SELECT c.name, c.color_hex, ROUND(SUM(t.amount), 2) as total
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
@@ -95,8 +95,8 @@ class Expense {
 
     public static function getCommitmentsRemaining(): float {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT SUM(amount) FROM commitments");
-        return (float) $stmt->fetchColumn();
+        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments");
+        return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function addCommitment(string $name, float $amount, int $due_date_day): bool {
@@ -109,5 +109,29 @@ class Expense {
         $db = Database::getConnection();
         $stmt = $db->prepare("DELETE FROM commitments WHERE id = ?");
         return $stmt->execute([$id]);
+    }
+
+    public static function processDueCommitments(): void {
+        $db = Database::getConnection();
+        $currentDay = (int)date('j');
+        $currentMonth = date('m');
+        $currentYear = date('Y');
+        
+        $stmt = $db->query("SELECT * FROM commitments WHERE due_date_day <= $currentDay");
+        $dueCommitments = $stmt->fetchAll();
+        
+        $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = 'expense' AND date = ?");
+        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (NULL, ?, 'expense', ?, ?)");
+        
+        foreach ($dueCommitments as $c) {
+            $desc = "[Auto] " . $c['name'];
+            $dueDateStr = sprintf("%04d-%02d-%02d", $currentYear, $currentMonth, $c['due_date_day']);
+            
+            $checkStmt->execute([$desc, $dueDateStr]);
+            
+            if ($checkStmt->fetchColumn() == 0) {
+                $insertStmt->execute([$c['amount'], $desc, $dueDateStr]);
+            }
+        }
     }
 }
