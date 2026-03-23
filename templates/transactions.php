@@ -4,6 +4,17 @@ require_once __DIR__ . '/../src/Settings.php';
 require_once __DIR__ . '/../src/Expense.php';
 require_once __DIR__ . '/../src/Category.php';
 
+$reqMonth = $_GET['month'] ?? date('Y-m');
+$parts = explode('-', $reqMonth);
+if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
+    $year = $parts[0];
+    $month = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+} else {
+    $year = date('Y');
+    $month = date('m');
+    $reqMonth = "$year-$month";
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         if ($_POST['action'] === 'set_balance') {
@@ -25,13 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Expense::deleteTransaction($id);
             }
         }
-        header("Location: /transactions");
+        header("Location: /transactions?month=" . urlencode($reqMonth));
         exit;
     }
 }
 
-$month = $_GET['month'] ?? date('m');
-$year = $_GET['year'] ?? date('Y');
+$prevMonth = date('Y-m', strtotime($reqMonth . '-01 -1 month'));
+$nextMonth = date('Y-m', strtotime($reqMonth . '-01 +1 month'));
+$currentDisplay = date('F Y', strtotime($reqMonth . '-01'));
 
 $startingBalance = (float) Settings::get('starting_bank_balance', 0);
 $transactions = Expense::getTransactions($month, $year);
@@ -40,10 +52,20 @@ $categories = Category::getAll();
 ob_start();
 ?>
 <div>
+    <!-- dynamic month navigation & header -->
     <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
             <h2 class="text-3xl font-bold tracking-tight mb-1 text-white">Transactions</h2>
             <p class="text-gray-400">Manage your daily records and initialize your bank balance mapping.</p>
+        </div>
+        <div class="flex items-center bg-dark-800 border border-dark-700 rounded-xl p-1 shadow-inner h-fit">
+            <a href="?month=<?= htmlspecialchars((string)$prevMonth, ENT_QUOTES, 'UTF-8') ?>" class="p-2 text-gray-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </a>
+            <span class="px-4 font-semibold text-sm text-gray-200 min-w-32 text-center w-36"><?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></span>
+            <a href="?month=<?= htmlspecialchars((string)$nextMonth, ENT_QUOTES, 'UTF-8') ?>" class="p-2 text-gray-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
         </div>
     </div>
 
@@ -55,7 +77,7 @@ ob_start();
                 <svg class="w-5 h-5 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Add Daily Record
             </h3>
-            <form method="POST" action="/transactions" class="space-y-4">
+            <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="space-y-4">
                 <input type="hidden" name="action" value="add_transaction">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -83,7 +105,7 @@ ob_start();
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Date</label>
-                        <input type="date" name="date" required value="<?= date('Y-m-d') ?>"
+                        <input type="date" name="date" required value="<?= htmlspecialchars((string)(date('Y-m') === $reqMonth ? date('Y-m-d') : $reqMonth . '-01'), ENT_QUOTES, 'UTF-8') ?>"
                             class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
                     </div>
                 </div>
@@ -102,10 +124,10 @@ ob_start();
         <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg flex flex-col justify-center">
             <h3 class="text-xl font-bold text-white mb-2 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
-                Starting Bank Balance / Initial Income
+                Absolute Initial Balance Baseline
             </h3>
-            <p class="text-sm text-gray-400 mb-6">Set your baseline income/balance before tracking starts. This heavily influences your Real/Projected balances.</p>
-            <form method="POST" action="/transactions" class="space-y-4">
+            <p class="text-sm text-gray-400 mb-6">Set your baseline income/balance before tracking starts. Do not change this month-to-month. System rolls over correctly.</p>
+            <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="space-y-4">
                 <input type="hidden" name="action" value="set_balance">
                 <div>
                     <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Initial Balance (RM)</label>
@@ -116,7 +138,7 @@ ob_start();
                     </div>
                 </div>
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition-colors text-sm shadow-md mt-2">
-                    Update Balance Baseline
+                    Update Absolute Baseline
                 </button>
             </form>
         </div>
@@ -127,7 +149,7 @@ ob_start();
         <div class="p-6 border-b border-dark-700/50 flex justify-between items-center">
             <h3 class="text-lg font-bold text-white">Monthly Transactions Data</h3>
             <span class="text-sm text-gray-400 font-medium px-3 py-1 bg-dark-900 rounded-lg">
-                <?= date('F Y', mktime(0,0,0,$month,1,$year)) ?>
+                <?= htmlspecialchars((string)date('F Y', mktime(0,0,0,$month,1,$year)), ENT_QUOTES, 'UTF-8') ?>
             </span>
         </div>
         <div class="overflow-x-auto flex-1 p-0">
@@ -146,7 +168,7 @@ ob_start();
                         <tr><td colspan="5" class="px-6 py-12 text-center text-gray-500">
                             <div class="flex flex-col items-center gap-2">
                                 <svg class="w-8 h-8 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <span>No transactions recorded.</span>
+                                <span>No transactions recorded for <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?>.</span>
                             </div>
                         </td></tr>
                     <?php else: ?>
@@ -164,7 +186,7 @@ ob_start();
                                     <?= $t['type'] === 'income' ? '+' : '-' ?><?= number_format($t['amount'], 2) ?>
                                 </td>
                                 <td class="px-4 py-4 text-center">
-                                    <form method="POST" action="/transactions" onsubmit="return confirm('Delete this transaction?');">
+                                    <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');">
                                         <input type="hidden" name="action" value="delete_transaction">
                                         <input type="hidden" name="id" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
                                         <button type="submit" class="text-gray-600 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors inline-block opacity-0 group-hover:opacity-100 focus:opacity-100">
