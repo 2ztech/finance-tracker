@@ -50,7 +50,9 @@ class Database {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 amount REAL NOT NULL,
-                due_date_day INTEGER NOT NULL CHECK(due_date_day >= 1 AND due_date_day <= 31)
+                due_date_day INTEGER NOT NULL CHECK(due_date_day >= 1 AND due_date_day <= 31),
+                category_id INTEGER,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
             )",
             "CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +67,12 @@ class Database {
 
         foreach ($queries as $query) {
             $db->exec($query);
+        }
+        
+        try {
+            $db->exec("ALTER TABLE commitments ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL");
+        } catch (PDOException $e) {
+            // Ignored, column already exists
         }
         
         // Setup initial default user if not exists

@@ -165,7 +165,12 @@ class Expense {
     // --- Commitments Logic ---
     public static function getCommitments(): array {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT * FROM commitments ORDER BY due_date_day");
+        $stmt = $db->query("
+            SELECT c.*, cat.name as category_name, cat.color_hex 
+            FROM commitments c
+            LEFT JOIN categories cat ON c.category_id = cat.id
+            ORDER BY c.due_date_day
+        ");
         return $stmt->fetchAll();
     }
 
@@ -175,10 +180,16 @@ class Expense {
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function addCommitment(string $name, float $amount, int $due_date_day): bool {
+    public static function addCommitment(string $name, float $amount, int $due_date_day, ?int $category_id = null): bool {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, due_date_day) VALUES (?, ?, ?)");
-        return $stmt->execute([$name, $amount, $due_date_day]);
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, due_date_day, category_id) VALUES (?, ?, ?, ?)");
+        return $stmt->execute([$name, $amount, $due_date_day, $category_id]);
+    }
+
+    public static function updateCommitment(int $id, string $name, float $amount, int $due_date_day, ?int $category_id = null): bool {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, due_date_day = ?, category_id = ? WHERE id = ?");
+        return $stmt->execute([$name, $amount, $due_date_day, $category_id, $id]);
     }
 
     public static function deleteCommitment(int $id): bool {
@@ -197,7 +208,7 @@ class Expense {
         $dueCommitments = $stmt->fetchAll();
         
         $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = 'expense' AND date = ?");
-        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (NULL, ?, 'expense', ?, ?)");
+        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, 'expense', ?, ?)");
         
         foreach ($dueCommitments as $c) {
             $desc = "[Auto] " . $c['name'];
@@ -206,7 +217,7 @@ class Expense {
             $checkStmt->execute([$desc, $dueDateStr]);
             
             if ($checkStmt->fetchColumn() == 0) {
-                $insertStmt->execute([$c['amount'], $desc, $dueDateStr]);
+                $insertStmt->execute([$c['category_id'], $c['amount'], $desc, $dueDateStr]);
             }
         }
     }
