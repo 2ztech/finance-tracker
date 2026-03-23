@@ -30,6 +30,19 @@ if (!Auth::isLoggedIn() && $route !== 'login') {
 }
 
 // Define custom routes inside `index.php`
+if ($route === 'settings/password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $old = $_POST['old_password'] ?? '';
+    $new = $_POST['new_password'] ?? '';
+    
+    if (Auth::updatePassword($_SESSION['user_id'], $old, $new)) {
+        header('Location: /settings?msg=password_success');
+    } else {
+        header('Location: /settings?msg=password_error');
+    }
+    exit;
+}
+
 if ($route === 'settings/export') {
     Auth::requireLogin();
     header('Content-Type: text/csv');
@@ -106,6 +119,7 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $routes = [
     '' => 'dashboard.php',
     'dashboard' => 'dashboard.php',
+    'transactions' => 'transactions.php',
     'login' => 'login.php',
     'commitments' => 'commitments.php',
     'categories' => 'categories.php',

@@ -56,8 +56,8 @@ ob_start();
                     <?php foreach ($expenses as $c): ?>
                         <div class="bg-dark-800 backdrop-blur-md border border-dark-700 rounded-xl p-4 flex items-center justify-between group hover:border-dark-500 transition-all shadow-sm hover:shadow-md">
                             <div class="flex items-center gap-4">
-                                <div class="w-5 h-5 rounded-full shadow-inner ring-4 ring-dark-700 group-hover:ring-dark-600 transition-all" style="background-color: <?= htmlspecialchars($c['color_hex']) ?>"></div>
-                                <span class="font-medium text-gray-200 text-lg"><?= htmlspecialchars($c['name']) ?></span>
+                                <div class="w-5 h-5 rounded-full shadow-inner ring-4 ring-dark-700 group-hover:ring-dark-600 transition-all" style="background-color: <?= htmlspecialchars((string)$c['color_hex'], ENT_QUOTES, 'UTF-8') ?>"></div>
+                                <span class="font-medium text-gray-200 text-lg"><?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?></span>
                             </div>
                             <form method="POST" action="/categories" onsubmit="return confirm('Delete this category? Transactions using it will be uncategorized.');">
                                 <input type="hidden" name="action" value="delete">
@@ -89,8 +89,8 @@ ob_start();
                     <?php foreach ($incomes as $c): ?>
                         <div class="bg-dark-800 backdrop-blur-md border border-dark-700 rounded-xl p-4 flex items-center justify-between group hover:border-dark-500 transition-all shadow-sm hover:shadow-md">
                             <div class="flex items-center gap-4">
-                                <div class="w-5 h-5 rounded-full shadow-inner ring-4 ring-dark-700 group-hover:ring-dark-600 transition-all" style="background-color: <?= htmlspecialchars($c['color_hex']) ?>"></div>
-                                <span class="font-medium text-gray-200 text-lg"><?= htmlspecialchars($c['name']) ?></span>
+                                <div class="w-5 h-5 rounded-full shadow-inner ring-4 ring-dark-700 group-hover:ring-dark-600 transition-all" style="background-color: <?= htmlspecialchars((string)$c['color_hex'], ENT_QUOTES, 'UTF-8') ?>"></div>
+                                <span class="font-medium text-gray-200 text-lg"><?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?></span>
                             </div>
                             <form method="POST" action="/categories" onsubmit="return confirm('Delete this category? Transactions using it will be uncategorized.');">
                                 <input type="hidden" name="action" value="delete">

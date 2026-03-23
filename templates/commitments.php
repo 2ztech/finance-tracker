@@ -56,10 +56,10 @@ ob_start();
                     <div class="flex items-center gap-5">
                         <div class="w-14 h-14 rounded-xl bg-orange-500/10 text-orange-400 flex flex-col items-center justify-center border border-orange-500/20 shadow-sm">
                             <span class="text-[10px] font-bold uppercase opacity-80 tracking-wider">Day</span>
-                            <span class="text-xl font-black leading-none"><?= htmlspecialchars($c['due_date_day']) ?></span>
+                            <span class="text-xl font-black leading-none"><?= htmlspecialchars((string)$c['due_date_day'], ENT_QUOTES, 'UTF-8') ?></span>
                         </div>
                         <div>
-                            <h4 class="text-lg font-bold text-white mb-0.5"><?= htmlspecialchars($c['name']) ?></h4>
+                            <h4 class="text-lg font-bold text-white mb-0.5"><?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?></h4>
                             <p class="text-lg font-medium text-gray-300">RM <?= number_format($c['amount'], 2) ?></p>
                         </div>
                     </div>

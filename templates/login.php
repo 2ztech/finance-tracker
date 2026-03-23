@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php if ($error): ?>
                 <div class="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
                     <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <?= htmlspecialchars($error) ?>
+                    <?= htmlspecialchars((string)$error, ENT_QUOTES, 'UTF-8') ?>
                 </div>
             <?php endif; ?>
 
@@ -100,9 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Sign In to Dashboard
                 </button>
             </form>
-            <p class="text-xs text-center text-gray-500 mt-8">
-                Default access: <span class="font-mono bg-dark-700/50 px-2 py-0.5 rounded text-gray-300">admin / admin</span>
-            </p>
         </div>
     </div>
 </body>

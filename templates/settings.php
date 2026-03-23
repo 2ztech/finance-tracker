@@ -22,6 +22,16 @@ ob_start();
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         Error importing data. Ensure the CSV format matches the export format.
     </div>
+<?php elseif ($msg === 'password_success'): ?>
+    <div class="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        Password updated successfully!
+    </div>
+<?php elseif ($msg === 'password_error'): ?>
+    <div class="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        Incorrect current password. Could not update.
+    </div>
 <?php endif; ?>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -67,6 +77,25 @@ ob_start();
         <a href="/settings/backup" class="w-full inline-flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-medium py-2 px-4 rounded-xl transition-colors shadow-md">
             Download Database
         </a>
+    </div>
+
+    <!-- Change Password -->
+    <div class="bg-dark-800/80 backdrop-blur-md border border-dark-700/50 rounded-2xl p-6 shadow-xl relative group hover:border-dark-600 transition-colors">
+        <div class="absolute inset-0 bg-gradient-to-b from-red-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl"></div>
+        <div class="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mb-4">
+             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        </div>
+        <h3 class="text-lg font-bold text-white mb-2">Change Password</h3>
+        <p class="text-sm text-gray-400 mb-4">Secure your account by updating your password.</p>
+        <form method="POST" action="/settings/password" class="flex flex-col gap-3">
+            <input type="password" name="old_password" required placeholder="Current Password"
+                class="block w-full text-sm text-white px-4 py-2 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+            <input type="password" name="new_password" required placeholder="New Password"
+                class="block w-full text-sm text-white px-4 py-2 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+            <button type="submit" class="w-full inline-flex justify-center flex-1 items-center gap-2 bg-red-600 hover:bg-red-500 text-white font-medium py-2 px-4 rounded-xl transition-colors mt-1">
+                Update Password
+            </button>
+        </form>
     </div>
 </div>
 <?php
