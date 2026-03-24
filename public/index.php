@@ -78,6 +78,40 @@ if ($route === 'settings/backup') {
     }
 }
 
+if ($route === 'settings/restore' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    if (isset($_FILES['db_file']) && $_FILES['db_file']['error'] == 0) {
+        $fileInfo = pathinfo($_FILES['db_file']['name']);
+        $ext = strtolower($fileInfo['extension'] ?? '');
+        if (in_array($ext, ['db', 'sqlite'])) {
+            $dest = __DIR__ . '/../data/finance.db';
+            if (move_uploaded_file($_FILES['db_file']['tmp_name'], $dest)) {
+                header('Location: /settings?msg=restore_success');
+                exit;
+            }
+        }
+    }
+    header('Location: /settings?msg=restore_error');
+    exit;
+}
+
+if ($route === 'settings/clean-duplicates' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $db = Database::getConnection();
+    
+    $stmt = $db->prepare("
+        DELETE FROM transactions WHERE id NOT IN (
+            SELECT MIN(id) FROM transactions 
+            GROUP BY DATE(date), amount, type, TRIM(LOWER(description)), category_id
+        )
+    ");
+    $stmt->execute();
+    $deleted = $stmt->rowCount();
+    
+    header("Location: /settings?msg=clean_success&count={$deleted}");
+    exit;
+}
+
 if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
@@ -92,17 +126,25 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
                     if (count($data) >= 5) {
-                        $date = $data[0];
-                        $type = $data[1];
-                        $amount = round((float)$data[2], 2);
-                        $categoryName = $data[3];
-                        $description = $data[4];
+                        $date = trim($data[0] ?? '');
+                        $type = trim($data[1] ?? '');
+                        $amount = round((float)($data[2] ?? 0), 2);
+                        $categoryName = trim($data[3] ?? '');
+                        $description = trim($data[4] ?? '');
 
                         $stmtCat->execute([$categoryName]);
                         $cat = $stmtCat->fetch();
                         $catId = $cat ? $cat['id'] : null;
 
-                        $stmtInsert->execute([$catId, $amount, $type, $description, $date]);
+                        $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) AND category_id " . ($catId === null ? "IS NULL" : "= ?") . " LIMIT 1");
+                        if ($catId === null) {
+                            $stmtCheck->execute([$date, $amount, $type, $description]);
+                        } else {
+                            $stmtCheck->execute([$date, $amount, $type, $description, $catId]);
+                        }
+                        if (!$stmtCheck->fetchColumn()) {
+                            $stmtInsert->execute([$catId, $amount, $type, $description, $date]);
+                        }
                     }
                 }
                 $db->commit();
