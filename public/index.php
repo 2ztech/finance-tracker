@@ -122,7 +122,8 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 // skip header
                 fgetcsv($handle);
-                $stmtCat = $db->prepare("SELECT id FROM categories WHERE name = ? LIMIT 1");
+                $stmtCat = $db->prepare("SELECT id FROM categories WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND type = ? LIMIT 1");
+                $stmtCreateCat = $db->prepare("INSERT INTO categories (name, type) VALUES (?, ?)");
                 $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
                     if (count($data) >= 5) {
@@ -132,9 +133,17 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         $categoryName = trim($data[3] ?? '');
                         $description = trim($data[4] ?? '');
 
-                        $stmtCat->execute([$categoryName]);
-                        $cat = $stmtCat->fetch();
-                        $catId = $cat ? $cat['id'] : null;
+                        $catId = null;
+                        if ($categoryName !== '') {
+                            $stmtCat->execute([$categoryName, $type]);
+                            $cat = $stmtCat->fetch();
+                            if ($cat) {
+                                $catId = $cat['id'];
+                            } else {
+                                $stmtCreateCat->execute([$categoryName, $type]);
+                                $catId = $db->lastInsertId();
+                            }
+                        }
 
                         $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) AND category_id " . ($catId === null ? "IS NULL" : "= ?") . " LIMIT 1");
                         if ($catId === null) {
