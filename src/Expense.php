@@ -95,19 +95,24 @@ class Expense {
     // --- Core Balance Calculations Phase 6 ---
 
     public static function getStartingBalanceForMonth(string $month, string $year): float {
-        $db = Database::getConnection();
-        $targetDate = "$year-$month-01";
-        
-        $stmtInc = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'income' AND date < ?");
-        $stmtInc->execute([$targetDate]);
-        $inc = round((float) $stmtInc->fetchColumn(), 2);
-        
-        $stmtExp = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'expense' AND date < ?");
-        $stmtExp->execute([$targetDate]);
-        $exp = round((float) $stmtExp->fetchColumn(), 2);
-        
-        $base = round((float) Settings::get('starting_bank_balance', 0), 2);
-        return round($base + $inc - $exp, 2);
+        $requested = "$year-$month";
+        $trackingStart = Settings::get('tracking_start_month', date('Y-m'));
+
+        if ($requested <= $trackingStart) {
+            return round((float) Settings::get('starting_bank_balance', 0), 2);
+        }
+
+        // Requested is greater, calculate previous month recursively
+        $prevDate = date('Y-m', strtotime("$requested-01 -1 month"));
+        $prevParts = explode('-', $prevDate);
+        $prevYear = $prevParts[0];
+        $prevMonth = $prevParts[1];
+
+        $prevStart = self::getStartingBalanceForMonth($prevMonth, $prevYear);
+        $prevInc = self::getTotalIncome($prevMonth, $prevYear);
+        $prevExp = self::getTotalExpense($prevMonth, $prevYear);
+
+        return round($prevStart + $prevInc - $prevExp, 2);
     }
 
     public static function getOnHandBalance(string $month, string $year): float {
@@ -118,20 +123,37 @@ class Expense {
         $viewing = "$year-$month";
         $current = "$sysYear-$sysMonth";
         $startDate = "$year-$month-01";
-        $startBal = self::getStartingBalanceForMonth($month, $year);
         
-        if ($viewing < $current) {
-            $targetDate = date("Y-m-t", strtotime($startDate));
-        } elseif ($viewing > $current) {
-            return $startBal;
-        } else {
-            $targetDate = $sysDate;
+        // 1. Viewing the CURRENT Month
+        if ($viewing === $current) {
+            $startBal = self::getStartingBalanceForMonth($month, $year);
+            $inc = self::getTotalIncomeBetween($startDate, $sysDate);
+            $exp = self::getTotalExpenseBetween($startDate, $sysDate);
+            return round($startBal + $inc - $exp, 2);
+        } 
+        // 2. Viewing a PAST Month
+        elseif ($viewing < $current) {
+            $endDate = date("Y-m-t", strtotime($startDate));
+            $startBal = self::getStartingBalanceForMonth($month, $year);
+            $inc = self::getTotalIncomeBetween($startDate, $endDate);
+            $exp = self::getTotalExpenseBetween($startDate, $endDate);
+            return round($startBal + $inc - $exp, 2);
+        } 
+        // 3. Viewing a FUTURE Month (Your Ledger Fix)
+        else {
+            // Grab the On-Hand balance from the PREVIOUS month
+            $prevDate = date('Y-m', strtotime("$startDate -1 month"));
+            $prevParts = explode('-', $prevDate);
+            
+            $prevOnHand = self::getOnHandBalance($prevParts[1], $prevParts[0]);
+            
+            // Add any new transactions already inserted into this future month
+            $endDate = date("Y-m-t", strtotime($startDate));
+            $inc = self::getTotalIncomeBetween($startDate, $endDate);
+            $exp = self::getTotalExpenseBetween($startDate, $endDate);
+            
+            return round($prevOnHand + $inc - $exp, 2);
         }
-        
-        $inc = self::getTotalIncomeBetween($startDate, $targetDate);
-        $exp = self::getTotalExpenseBetween($startDate, $targetDate);
-        
-        return round($startBal + $inc - $exp, 2);
     }
 
     public static function getUnpaidCommitments(string $month, string $year): float {

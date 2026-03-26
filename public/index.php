@@ -1,4 +1,16 @@
 <?php
+// Dynamic timezone detection
+$detectedTz = getenv('TZ') ?: ($_ENV['TZ'] ?? '');
+if (empty($detectedTz)) {
+    if (file_exists('/etc/timezone') && is_readable('/etc/timezone')) {
+        $detectedTz = trim(file_get_contents('/etc/timezone'));
+    }
+}
+if (empty($detectedTz) || !in_array($detectedTz, timezone_identifiers_list())) {
+    $detectedTz = 'UTC';
+}
+date_default_timezone_set($detectedTz);
+
 session_start();
 
 // Auto-load core classes
@@ -43,6 +55,16 @@ if ($route === 'settings/password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /settings?msg=password_success');
     } else {
         header('Location: /settings?msg=password_error');
+    }
+    exit;
+}
+
+if ($route === 'settings/ledger' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    require_once __DIR__ . '/../src/Settings.php';
+    if (isset($_POST['tracking_start_month'])) {
+        Settings::set('tracking_start_month', $_POST['tracking_start_month']);
+        header('Location: /settings?msg=settings_success');
     }
     exit;
 }

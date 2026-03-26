@@ -47,11 +47,42 @@ ob_start();
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
         Successfully removed <?= htmlspecialchars($_GET['count'] ?? 0) ?> duplicate transaction(s)!
     </div>
+<?php elseif ($msg === 'settings_success'): ?>
+    <div class="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        Settings updated successfully!
+    </div>
 <?php endif; ?>
 
-<!-- Group 1: Account Security -->
-<div class="mb-10">
-    <div class="bg-dark-800/80 backdrop-blur-md border border-dark-700/50 rounded-lg p-6 shadow-md relative group hover:border-dark-600 transition-colors w-full">
+<!-- Group 1: General & Account Security -->
+<div class="mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- General Settings -->
+    <div class="bg-dark-800/80 backdrop-blur-md border border-dark-700/50 rounded-lg p-6 shadow-md relative group hover:border-dark-600 transition-colors w-full flex flex-col">
+        <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-xl bg-green-500/10 text-green-400 flex items-center justify-center">
+                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold text-white">General</h3>
+                <p class="text-sm text-gray-400">Ledger configuration settings.</p>
+            </div>
+        </div>
+        <form method="POST" action="/settings/ledger" class="flex flex-col gap-4 flex-1">
+            <?php require_once __DIR__ . '/../src/Settings.php'; ?>
+            <?php $tsm = Settings::get('tracking_start_month', date('Y-m')); ?>
+            <div class="flex-1">
+                <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Tracking Start Month</label>
+                <input type="month" name="tracking_start_month" value="<?= htmlspecialchars($tsm) ?>" required
+                    class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+            </div>
+            <button type="submit" class="w-full inline-flex justify-center flex-1 items-center bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm mt-auto max-h-[44px]">
+                Save General Settings
+            </button>
+        </form>
+    </div>
+
+    <!-- Account Security -->
+    <div class="bg-dark-800/80 backdrop-blur-md border border-dark-700/50 rounded-lg p-6 shadow-md relative group hover:border-dark-600 transition-colors w-full flex flex-col">
         <div class="flex items-center gap-4 mb-6">
             <div class="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center">
                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
@@ -61,12 +92,14 @@ ob_start();
                 <p class="text-sm text-gray-400">Secure your account by updating your password.</p>
             </div>
         </div>
-        <form method="POST" action="/settings/password" class="flex flex-col md:flex-row gap-4 items-start md:items-center">
-            <input type="password" name="old_password" required placeholder="Current Password"
-                class="block w-full md:w-auto flex-1 text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
-            <input type="password" name="new_password" required placeholder="New Password"
-                class="block w-full md:w-auto flex-1 text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
-            <button type="submit" class="w-full md:w-auto inline-flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-6 rounded-lg transition-colors shadow-sm">
+        <form method="POST" action="/settings/password" class="flex flex-col gap-4 flex-1">
+            <div class="flex-1 space-y-4">
+                <input type="password" name="old_password" required placeholder="Current Password"
+                    class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                <input type="password" name="new_password" required placeholder="New Password"
+                    class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+            </div>
+            <button type="submit" class="w-full inline-flex justify-center items-center bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-6 rounded-lg transition-colors shadow-sm mt-auto max-h-[44px]">
                 Update Password
             </button>
         </form>
