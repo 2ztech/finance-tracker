@@ -176,12 +176,33 @@ class Expense {
     }
 
     public static function getEOMProjection(string $month, string $year): float {
-        $startBal = self::getStartingBalanceForMonth($month, $year);
-        $allInc = self::getTotalIncome($month, $year);
-        $allExp = self::getTotalExpense($month, $year);
-        $unpaid = self::getUnpaidCommitments($month, $year);
-        
-        return round($startBal + $allInc - $allExp - $unpaid, 2);
+        $requested = "$year-$month";
+        $trackingStart = Settings::get('tracking_start_month', date('Y-m'));
+
+        // 1. For your Start Month (March), calculate normally from Starting Balance
+        if ($requested <= $trackingStart) {
+            $startBal = self::getStartingBalanceForMonth($month, $year);
+            $allInc = self::getTotalIncome($month, $year);
+            $allExp = self::getTotalExpense($month, $year);
+            $unpaid = self::getUnpaidCommitments($month, $year);
+            
+            return round($startBal + $allInc - $allExp - $unpaid, 2);
+        } 
+        // 2. For Future Months (April onwards), carry over the PREVIOUS month's EOM
+        else {
+            $prevDate = date('Y-m', strtotime("$requested-01 -1 month"));
+            $prevParts = explode('-', $prevDate);
+            
+            // Grab the 274.47 from March
+            $prevEOM = self::getEOMProjection($prevParts[1], $prevParts[0]);
+            
+            $allInc = self::getTotalIncome($month, $year);
+            $allExp = self::getTotalExpense($month, $year);
+            $unpaid = self::getUnpaidCommitments($month, $year);
+            
+            // 274.47 + 0 (Inc) - 0 (Exp) - 501.25 (Unpaid) = -226.78
+            return round($prevEOM + $allInc - $allExp - $unpaid, 2);
+        }
     }
 
     // --- Commitments Logic ---
