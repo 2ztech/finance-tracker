@@ -46,15 +46,16 @@ if (Auth::isLoggedIn()) {
 }
 
 // Define custom routes inside `index.php`
-if ($route === 'settings/password' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($route === 'settings/account' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
+    $username = $_POST['username'] ?? '';
     $old = $_POST['old_password'] ?? '';
     $new = $_POST['new_password'] ?? '';
     
-    if (Auth::updatePassword($_SESSION['user_id'], $old, $new)) {
-        header('Location: /settings?msg=password_success');
+    if (Auth::updateCredentials($_SESSION['user_id'], $username, $old, $new)) {
+        header('Location: /settings?msg=account_success');
     } else {
-        header('Location: /settings?msg=password_error');
+        header('Location: /settings?msg=account_error');
     }
     exit;
 }
@@ -198,7 +199,7 @@ $routes = [
     'dashboard' => 'dashboard.php',
     'transactions' => 'transactions.php',
     'login' => 'login.php',
-    'commitments' => 'commitments.php',
+    'recurring' => 'recurring.php',
     'categories' => 'categories.php',
     'settings' => 'settings.php',
 ];

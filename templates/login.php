@@ -2,16 +2,26 @@
 require_once __DIR__ . '/../src/Auth.php';
 
 $error = '';
+$isFirstTime = !Auth::hasUsers();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
 
-    if (Auth::attemptLogin($username, $password)) {
-        header('Location: /dashboard');
-        exit;
+    if ($isFirstTime) {
+        if (Auth::setupFirstUser($username, $password)) {
+            header('Location: /dashboard');
+            exit;
+        } else {
+            $error = 'Failed to create user. Please try again.';
+        }
     } else {
-        $error = 'Invalid credentials. Please try again.';
+        if (Auth::attemptLogin($username, $password)) {
+            header('Location: /dashboard');
+            exit;
+        } else {
+            $error = 'Invalid credentials. Please try again.';
+        }
     }
 }
 ?>
@@ -62,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
                 <h1 class="text-3xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight">Expenzz</h1>
-                <p class="text-gray-400">Unlock your financial clarity.</p>
+                <p class="text-gray-400"><?= $isFirstTime ? 'Set up your master account.' : 'Unlock your financial clarity.' ?></p>
             </div>
             
             <?php if ($error): ?>
@@ -97,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <button type="submit" 
                     class="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-400 hover:to-brand-500 text-white font-medium py-3 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40 transform hover:-translate-y-0.5 mt-2">
-                    Sign In to Dashboard
+                    <?= $isFirstTime ? 'Create Account & Start' : 'Sign In to Dashboard' ?>
                 </button>
             </form>
         </div>

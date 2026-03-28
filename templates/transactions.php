@@ -30,6 +30,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($catId > 0 && $amount > 0 && $description && $date) {
                 Expense::addTransaction($catId, $amount, $type, $description, $date);
             }
+        } elseif ($_POST['action'] === 'edit_transaction') {
+            $id = (int)($_POST['id'] ?? 0);
+            $catId = (int)($_POST['category_id'] ?? 0);
+            $amount = (float)($_POST['amount'] ?? 0);
+            $type = $_POST['type'] ?? 'expense';
+            $description = trim($_POST['description'] ?? '');
+            $date = $_POST['date'] ?? date('Y-m-d');
+            
+            if ($id > 0 && $catId > 0 && $amount > 0 && $description && $date) {
+                Expense::updateTransaction($id, $catId, $amount, $type, $description, $date);
+            }
         } elseif ($_POST['action'] === 'delete_transaction') {
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
@@ -185,14 +196,19 @@ ob_start();
                                 <td class="px-6 py-4 text-right font-medium text-base <?= $t['type'] === 'income' ? 'text-brand-400' : 'text-gray-100' ?>">
                                     <?= $t['type'] === 'income' ? '+' : '-' ?><?= number_format($t['amount'], 2) ?>
                                 </td>
-                                <td class="px-4 py-4 text-center">
-                                    <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');">
-                                        <input type="hidden" name="action" value="delete_transaction">
-                                        <input type="hidden" name="id" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <button type="submit" class="text-gray-600 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors inline-block opacity-0 group-hover:opacity-100 focus:opacity-100">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                <td class="px-4 py-4">
+                                    <div class="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button type="button" onclick="openEditModal(<?= $t['id'] ?>, '<?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?>', <?= $t['category_id'] ?>, '<?= htmlspecialchars((string)$t['description'], ENT_QUOTES, 'UTF-8') ?>', <?= $t['amount'] ?>, '<?= $t['type'] ?>')" class="text-gray-500 hover:text-brand-400 p-2 rounded-lg hover:bg-brand-500/10 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                         </button>
-                                    </form>
+                                        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');">
+                                            <input type="hidden" name="action" value="delete_transaction">
+                                            <input type="hidden" name="id" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <button type="submit" class="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -202,6 +218,99 @@ ob_start();
         </div>
     </div>
 </div>
+</div>
+
+<!-- Edit Transaction Modal -->
+<div id="editModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+    <div class="bg-dark-800/90 border border-dark-700/50 rounded-2xl p-6 shadow-2xl w-full max-w-md transform scale-95 transition-transform duration-300">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                <svg class="w-5 h-5 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                Edit Transaction
+            </h3>
+            <button onclick="closeEditModal()" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-dark-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="space-y-4">
+            <input type="hidden" name="action" value="edit_transaction">
+            <input type="hidden" name="id" id="edit_id" value="">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Type</label>
+                    <select name="type" id="edit_type" class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
+                        <option value="expense">Expense</option>
+                        <option value="income">Income</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Amount (RM)</label>
+                    <input type="number" step="0.01" min="0.01" name="amount" id="edit_amount" required placeholder="0.00"
+                        class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Category</label>
+                    <select name="category_id" id="edit_category_id" required class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
+                        <option value="">Select Category...</option>
+                        <?php foreach($categories as $cat): ?>
+                            <option value="<?= htmlspecialchars((string)$cat['id'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string)$cat['name'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars(ucfirst((string)$cat['type']), ENT_QUOTES, 'UTF-8') ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Date</label>
+                    <input type="date" name="date" id="edit_date" required
+                        class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Description</label>
+                <input type="text" name="description" id="edit_description" required placeholder="e.g. Lunch at Cafe"
+                    class="w-full px-3 py-2 bg-dark-900 border border-dark-600 rounded-lg text-white text-sm outline-none focus:border-brand-500 transition-colors">
+            </div>
+            <div class="pt-2">
+                <button type="submit" class="w-full bg-brand-500 hover:bg-brand-400 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors text-sm shadow-md">
+                    Update Transaction
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openEditModal(id, date, category_id, description, amount, type) {
+        document.getElementById('edit_id').value = id;
+        document.getElementById('edit_date').value = date;
+        document.getElementById('edit_category_id').value = category_id;
+        document.getElementById('edit_description').value = description;
+        document.getElementById('edit_amount').value = amount;
+        document.getElementById('edit_type').value = type;
+
+        const modal = document.getElementById('editModal');
+        const modalContent = modal.firstElementChild;
+        modal.classList.remove('hidden');
+        
+        // Trigger reflow
+        void modal.offsetWidth;
+        
+        modal.classList.remove('opacity-0');
+        modalContent.classList.remove('scale-95');
+    }
+
+    function closeEditModal() {
+        const modal = document.getElementById('editModal');
+        const modalContent = modal.firstElementChild;
+        modal.classList.add('opacity-0');
+        modalContent.classList.add('scale-95');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 300);
+    }
+</script>
+
 <?php
 $content = ob_get_clean();
 require __DIR__ . '/layout.php';

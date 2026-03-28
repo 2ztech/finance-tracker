@@ -86,6 +86,19 @@ class Expense {
         ]);
     }
 
+    public static function updateTransaction(int $id, int $categoryId, float $amount, string $type, string $description, string $date): bool {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("UPDATE transactions SET category_id = ?, amount = ?, type = ?, description = ?, date = ? WHERE id = ?");
+        return $stmt->execute([
+            $categoryId ?: null,
+            $amount,
+            $type,
+            $description,
+            $date,
+            $id
+        ]);
+    }
+
     public static function deleteTransaction(int $id): bool {
         $db = Database::getConnection();
         $stmt = $db->prepare("DELETE FROM transactions WHERE id = ?");
@@ -156,19 +169,20 @@ class Expense {
         }
     }
 
-    public static function getUnpaidCommitments(string $month, string $year): float {
+    public static function getUnpaidRecurring(string $type, string $month, string $year): float {
         $db = Database::getConnection();
         
-        // Total monthly commitments
-        $stmt1 = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments");
+        // Total monthly recurring
+        $stmt1 = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM commitments WHERE type = ?");
+        $stmt1->execute([$type]);
         $totalComm = round((float) $stmt1->fetchColumn(), 2);
         
-        // Paid commitments (auto-inserted) in this month
+        // Paid recurring (auto-inserted) in this month
         $startDate = "$year-$month-01";
         $endDate = date("Y-m-t", strtotime($startDate));
         
-        $stmt2 = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = 'expense' AND description LIKE '[Auto] %' AND date >= ? AND date <= ?");
-        $stmt2->execute([$startDate, $endDate]);
+        $stmt2 = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = ? AND description LIKE '[Auto] %' AND date >= ? AND date <= ?");
+        $stmt2->execute([$type, $startDate, $endDate]);
         $paidComm = round((float) $stmt2->fetchColumn(), 2);
         
         $unpaid = round($totalComm - $paidComm, 2);
@@ -184,24 +198,24 @@ class Expense {
             $startBal = self::getStartingBalanceForMonth($month, $year);
             $allInc = self::getTotalIncome($month, $year);
             $allExp = self::getTotalExpense($month, $year);
-            $unpaid = self::getUnpaidCommitments($month, $year);
+            $unpaidInc = self::getUnpaidRecurring('income', $month, $year);
+            $unpaidExp = self::getUnpaidRecurring('expense', $month, $year);
             
-            return round($startBal + $allInc - $allExp - $unpaid, 2);
+            return round($startBal + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
         } 
         // 2. For Future Months (April onwards), carry over the PREVIOUS month's EOM
         else {
             $prevDate = date('Y-m', strtotime("$requested-01 -1 month"));
             $prevParts = explode('-', $prevDate);
             
-            // Grab the 274.47 from March
             $prevEOM = self::getEOMProjection($prevParts[1], $prevParts[0]);
             
             $allInc = self::getTotalIncome($month, $year);
             $allExp = self::getTotalExpense($month, $year);
-            $unpaid = self::getUnpaidCommitments($month, $year);
+            $unpaidInc = self::getUnpaidRecurring('income', $month, $year);
+            $unpaidExp = self::getUnpaidRecurring('expense', $month, $year);
             
-            // 274.47 + 0 (Inc) - 0 (Exp) - 501.25 (Unpaid) = -226.78
-            return round($prevEOM + $allInc - $allExp - $unpaid, 2);
+            return round($prevEOM + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
         }
     }
 
@@ -219,20 +233,37 @@ class Expense {
 
     public static function getCommitmentsRemaining(): float {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments");
+        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments WHERE type = 'expense'");
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function addCommitment(string $name, float $amount, int $due_date_day, ?int $category_id = null): bool {
+    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null): bool {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, due_date_day, category_id) VALUES (?, ?, ?, ?)");
-        return $stmt->execute([$name, $amount, $due_date_day, $category_id]);
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id) VALUES (?, ?, ?, ?, ?)");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id]);
+        if ($success && $category_id) {
+            self::syncTransactionsCategory($name, $category_id);
+        }
+        return $success;
     }
 
-    public static function updateCommitment(int $id, string $name, float $amount, int $due_date_day, ?int $category_id = null): bool {
+    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null): bool {
         $db = Database::getConnection();
-        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, due_date_day = ?, category_id = ? WHERE id = ?");
-        return $stmt->execute([$name, $amount, $due_date_day, $category_id, $id]);
+        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ? WHERE id = ?");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $id]);
+        if ($success && $category_id) {
+            self::syncTransactionsCategory($name, $category_id);
+        }
+        return $success;
+    }
+
+    private static function syncTransactionsCategory(string $name, int $categoryId): void {
+        $db = Database::getConnection();
+        $exactName = $name;
+        $autoName = "[Auto] " . $name;
+        
+        $stmt = $db->prepare("UPDATE transactions SET category_id = ? WHERE (description = ? OR description = ?) AND (category_id IS NULL OR category_id = 0 OR category_id = '')");
+        $stmt->execute([$categoryId, $exactName, $autoName]);
     }
 
     public static function deleteCommitment(int $id): bool {
@@ -250,17 +281,18 @@ class Expense {
         $stmt = $db->query("SELECT * FROM commitments WHERE due_date_day <= $currentDay");
         $dueCommitments = $stmt->fetchAll();
         
-        $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = 'expense' AND date = ?");
-        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, 'expense', ?, ?)");
+        $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = ? AND date = ?");
+        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
         
         foreach ($dueCommitments as $c) {
             $desc = "[Auto] " . $c['name'];
             $dueDateStr = sprintf("%04d-%02d-%02d", $currentYear, $currentMonth, $c['due_date_day']);
+            $type = $c['type'] ?? 'expense';
             
-            $checkStmt->execute([$desc, $dueDateStr]);
+            $checkStmt->execute([$desc, $type, $dueDateStr]);
             
             if ($checkStmt->fetchColumn() == 0) {
-                $insertStmt->execute([$c['category_id'], $c['amount'], $desc, $dueDateStr]);
+                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
             }
         }
     }

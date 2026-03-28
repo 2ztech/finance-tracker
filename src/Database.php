@@ -75,11 +75,10 @@ class Database {
             // Ignored, column already exists
         }
         
-        // Setup initial default user if not exists
-        $stmt = $db->query("SELECT COUNT(*) FROM users");
-        if ($stmt->fetchColumn() == 0) {
-            $defaultPassword = password_hash('admin', PASSWORD_DEFAULT);
-            $db->exec("INSERT INTO users (username, password_hash) VALUES ('admin', '$defaultPassword')");
+        try {
+            $db->exec("ALTER TABLE commitments ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'");
+        } catch (PDOException $e) {
+            // Ignored, column already exists
         }
 
         // Setup default categories

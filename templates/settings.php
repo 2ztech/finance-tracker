@@ -22,12 +22,12 @@ ob_start();
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         Error importing data. Ensure the CSV format matches the export format.
     </div>
-<?php elseif ($msg === 'password_success'): ?>
+<?php elseif ($msg === 'account_success'): ?>
     <div class="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-        Password updated successfully!
+        Account credentials updated successfully!
     </div>
-<?php elseif ($msg === 'password_error'): ?>
+<?php elseif ($msg === 'account_error'): ?>
     <div class="bg-red-500/10 border border-red-500/50 text-red-400 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-3">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         Incorrect current password. Could not update.
@@ -88,21 +88,46 @@ ob_start();
                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
             </div>
             <div>
-                <h3 class="text-xl font-bold text-white">Account Security</h3>
-                <p class="text-sm text-gray-400">Secure your account by updating your password.</p>
+                <h3 class="text-xl font-bold text-white">Account Credentials</h3>
+                <p class="text-sm text-gray-400">Secure your account by updating your username or password.</p>
             </div>
         </div>
-        <form method="POST" action="/settings/password" class="flex flex-col gap-4 flex-1">
+        <form method="POST" action="/settings/account" class="flex flex-col gap-4 flex-1" onsubmit="return validatePassword(this)">
             <div class="flex-1 space-y-4">
-                <input type="password" name="old_password" required placeholder="Current Password"
-                    class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
-                <input type="password" name="new_password" required placeholder="New Password"
-                    class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Username</label>
+                    <input type="text" name="username" required value="<?= htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                        class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Current Password (Required to save changes)</label>
+                    <input type="password" name="old_password" required placeholder="Current Password"
+                        class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">New Password (Optional)</label>
+                    <input type="password" name="new_password" placeholder="Leave blank to keep current"
+                        class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Confirm New Password</label>
+                    <input type="password" name="confirm_new_password" placeholder="Confirm new password"
+                        class="block w-full text-sm text-white px-4 py-2.5 bg-dark-900 border border-dark-600 rounded-lg outline-none focus:border-brand-500 transition-colors">
+                </div>
             </div>
             <button type="submit" class="w-full inline-flex justify-center items-center bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 px-6 rounded-lg transition-colors shadow-sm mt-auto max-h-[44px]">
-                Update Password
+                Update Credentials
             </button>
         </form>
+        <script>
+            function validatePassword(form) {
+                if (form.new_password.value !== form.confirm_new_password.value) {
+                    alert('New passwords do not match!');
+                    return false;
+                }
+                return true;
+            }
+        </script>
     </div>
 </div>
 

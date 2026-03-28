@@ -31,16 +31,47 @@ class Auth {
         session_destroy();
     }
 
-    public static function updatePassword(int $userId, string $oldPassword, string $newPassword): bool {
+    public static function hasUsers(): bool {
+        $db = Database::getConnection();
+        $stmt = $db->query("SELECT COUNT(*) FROM users");
+        return $stmt->fetchColumn() > 0;
+    }
+
+    public static function setupFirstUser(string $username, string $password): bool {
+        if (self::hasUsers()) {
+            return false;
+        }
+        $db = Database::getConnection();
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $db->prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)");
+        if ($stmt->execute([$username, $hash])) {
+            $userId = $db->lastInsertId();
+            $_SESSION['user_id'] = $userId;
+            $_SESSION['username'] = $username;
+            return true;
+        }
+        return false;
+    }
+
+    public static function updateCredentials(int $userId, string $newUsername, string $oldPassword, ?string $newPassword): bool {
         $db = Database::getConnection();
         $stmt = $db->prepare("SELECT password_hash FROM users WHERE id = ?");
         $stmt->execute([$userId]);
         $hash = $stmt->fetchColumn();
 
         if ($hash && password_verify($oldPassword, $hash)) {
-            $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
-            $stmtUpdate = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
-            return $stmtUpdate->execute([$newHash, $userId]);
+            if ($newPassword) {
+                $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+                $stmtUpdate = $db->prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?");
+                $success = $stmtUpdate->execute([$newUsername, $newHash, $userId]);
+            } else {
+                $stmtUpdate = $db->prepare("UPDATE users SET username = ? WHERE id = ?");
+                $success = $stmtUpdate->execute([$newUsername, $userId]);
+            }
+            if ($success) {
+                $_SESSION['username'] = $newUsername;
+                return true;
+            }
         }
         return false;
     }

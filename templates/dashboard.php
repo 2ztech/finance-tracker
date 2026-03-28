@@ -56,7 +56,7 @@ ob_start();
                 <svg class="w-16 h-16 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
             </div>
             <p class="text-sm font-medium text-gray-400 mb-2">Projected EOM Balance</p>
-            <h3 class="text-3xl font-bold text-white mb-1 tooltip" title="Start Bal + All Month Income - All Month Expenses - Unpaid Commitments">RM <?= number_format($projectedBalance, 2, '.', '') ?></h3>
+            <h3 class="text-3xl font-bold text-white mb-1 tooltip" title="Start Bal + All Month Income - All Month Expenses - Unpaid Recurring Items">RM <?= number_format($projectedBalance, 2, '.', '') ?></h3>
             <div class="flex items-center text-xs text-blue-400 font-medium">
                 End of Month Est.
             </div>

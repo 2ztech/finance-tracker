@@ -7,7 +7,7 @@ $currentRoute = $route ?? 'dashboard';
 $navItems = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => 'home'],
     'transactions' => ['label' => 'Transactions', 'icon' => 'document'],
-    'commitments' => ['label' => 'Commitments', 'icon' => 'calendar'],
+    'recurring' => ['label' => 'Recurring', 'icon' => 'calendar'],
     'categories' => ['label' => 'Categories', 'icon' => 'tag'],
     'settings' => ['label' => 'Settings', 'icon' => 'cog'],
 ];
