@@ -12,15 +12,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $due_date = (int) ($_POST['due_date_day'] ?? 1);
         $categoryId = (int) ($_POST['category_id'] ?? 0);
         $cleanCategoryId = $categoryId > 0 ? $categoryId : null;
+        $start_date = !empty($_POST['start_date']) ? $_POST['start_date'] : null;
+        $end_date = !empty($_POST['end_date']) ? $_POST['end_date'] : null;
 
         if ($_POST['action'] === 'add') {
-            if ($name && $amount > 0 && $due_date >= 1 && $due_date <= 31) {
-                Expense::addCommitment($name, $amount, $type, $due_date, $cleanCategoryId);
+            if ($name && $amount > 0 && $due_date >= 1 && $due_date <= 31 && !empty($start_date)) {
+                Expense::addCommitment($name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date);
             }
         } elseif ($_POST['action'] === 'edit') {
             $id = (int) ($_POST['id'] ?? 0);
-            if ($id > 0 && $name && $amount > 0 && $due_date >= 1 && $due_date <= 31) {
-                Expense::updateCommitment($id, $name, $amount, $type, $due_date, $cleanCategoryId);
+            if ($id > 0 && $name && $amount > 0 && $due_date >= 1 && $due_date <= 31 && !empty($start_date)) {
+                Expense::updateCommitment($id, $name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date);
             }
         } elseif ($_POST['action'] === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -90,10 +92,31 @@ ob_start();
                             <?php else: ?>
                                 <span class="text-xs font-medium text-gray-500 italic">Uncategorized</span>
                             <?php endif; ?>
+                            
+                            <?php 
+                            $today = date('Y-m-d');
+                            $hasStarted = empty($c['start_date']) || $c['start_date'] <= $today;
+                            $hasEnded = !empty($c['end_date']) && $c['end_date'] < $today;
+                            ?>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                <?php if (!$hasStarted): ?>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                        Starts <?= date('M j, Y', strtotime($c['start_date'])) ?>
+                                    </span>
+                                <?php elseif ($hasEnded): ?>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                                        Expired
+                                    </span>
+                                <?php elseif (!empty($c['end_date'])): ?>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-500/10 text-gray-400 border border-gray-500/20">
+                                        Ends <?= date('M j, Y', strtotime($c['end_date'])) ?>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                     <div class="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity focus-within:opacity-100 h-full">
-                        <button type="button" onclick="editCommitment(<?= $c['id'] ?>, '<?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?>', <?= $c['amount'] ?>, '<?= $cType ?>', <?= $c['due_date_day'] ?>, <?= (int)($c['category_id'] ?? 0) ?>)" class="p-2 text-gray-500 hover:text-brand-400 hover:bg-brand-500/10 rounded-xl transition-all" title="Edit Item">
+                        <button type="button" onclick="editCommitment(<?= $c['id'] ?>, '<?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?>', <?= $c['amount'] ?>, '<?= $cType ?>', <?= $c['due_date_day'] ?>, <?= (int)($c['category_id'] ?? 0) ?>, '<?= htmlspecialchars((string)($c['start_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars((string)($c['end_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>')" class="p-2 text-gray-500 hover:text-brand-400 hover:bg-brand-500/10 rounded-xl transition-all" title="Edit Item">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
                         <form method="POST" action="/recurring" onsubmit="return confirm('Delete this recurring item?');">
@@ -162,6 +185,19 @@ ob_start();
                     </div>
                 </div>
 
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1.5 ml-1">Start Date</label>
+                        <input type="date" name="start_date" id="form_start_date" required
+                            class="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-xl focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 outline-none text-white transition-all shadow-inner [color-scheme:dark]">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1.5 ml-1">End Date (Optional)</label>
+                        <input type="date" name="end_date" id="form_end_date"
+                            class="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-xl focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 outline-none text-white transition-all shadow-inner [color-scheme:dark]">
+                    </div>
+                </div>
+
                 <div class="pt-2">
                     <button type="submit" 
                         class="w-full relative overflow-hidden group bg-brand-500 hover:bg-brand-400 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transform hover:-translate-y-0.5">
@@ -212,7 +248,12 @@ ob_start();
         display.textContent = this.value;
     });
 
-    function editCommitment(id, name, amount, type, day, catId) {
+    // Default start date for new items
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('form_start_date').value = new Date().toISOString().split('T')[0];
+    });
+
+    function editCommitment(id, name, amount, type, day, catId, startDate, endDate) {
         document.getElementById('form_action').value = 'edit';
         document.getElementById('form_id').value = id;
         document.getElementById('form_type').value = type;
@@ -222,6 +263,9 @@ ob_start();
         
         document.getElementById('due_date_slider').value = day;
         document.getElementById('due_date_display').textContent = day;
+        
+        document.getElementById('form_start_date').value = startDate || '';
+        document.getElementById('form_end_date').value = endDate || '';
         
         filterCategories(); // Refresh list so category can be set
         
@@ -247,6 +291,9 @@ ob_start();
         
         document.getElementById('due_date_slider').value = 1;
         document.getElementById('due_date_display').textContent = 1;
+        
+        document.getElementById('form_start_date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('form_end_date').value = '';
 
         filterCategories();
         document.getElementById('form_category_id').value = '';

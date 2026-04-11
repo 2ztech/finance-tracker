@@ -99,6 +99,33 @@ ob_start();
                     <canvas id="expenseChart"></canvas>
                 <?php endif; ?>
             </div>
+            
+            <?php if (!empty($expensesByCategory)): ?>
+                <?php
+                $totalExpenseDenominator = array_sum(array_column($expensesByCategory, 'total'));
+                ?>
+                <div class="mt-8 pt-4">
+                    <div class="divide-y divide-dark-700/50 rounded-xl overflow-hidden shadow-sm bg-dark-900 border border-dark-800">
+                        <?php foreach ($expensesByCategory as $cat): ?>
+                            <?php 
+                            $percent = $totalExpenseDenominator > 0 ? ($cat['total'] / $totalExpenseDenominator) * 100 : 0; 
+                            ?>
+                            <div class="py-3.5 px-4 flex items-center justify-between group hover:bg-dark-800/30 transition-colors">
+                                <div class="flex items-center gap-4 min-w-0">
+                                    <div class="w-11 px-0.5 py-1 rounded text-center text-xs font-black text-dark-900 shrink-0" style="background-color: <?= htmlspecialchars((string)$cat['color_hex'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= number_format($percent, 0) ?>%
+                                    </div>
+                                    <span class="text-[15px] font-medium text-gray-300 truncate"><?= htmlspecialchars_decode((string)$cat['name'], ENT_QUOTES) ?></span>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0 ml-4">
+                                    <span class="text-[15px] font-bold text-white tracking-tight">RM <?= number_format($cat['total'], 2) ?></span>
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

@@ -81,6 +81,18 @@ class Database {
             // Ignored, column already exists
         }
 
+        try {
+            $db->exec("ALTER TABLE commitments ADD COLUMN start_date TEXT");
+        } catch (PDOException $e) {
+            // Ignored, column already exists
+        }
+        
+        try {
+            $db->exec("ALTER TABLE commitments ADD COLUMN end_date TEXT");
+        } catch (PDOException $e) {
+            // Ignored, column already exists
+        }
+
         // Setup default categories
         $stmt = $db->query("SELECT COUNT(*) FROM categories");
         if ($stmt->fetchColumn() == 0) {

@@ -173,9 +173,27 @@ class Expense {
         $db = Database::getConnection();
         
         // Total monthly recurring
-        $stmt1 = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM commitments WHERE type = ?");
+        $stmt1 = $db->prepare("SELECT * FROM commitments WHERE type = ?");
         $stmt1->execute([$type]);
-        $totalComm = round((float) $stmt1->fetchColumn(), 2);
+        $commitments = $stmt1->fetchAll();
+        
+        $totalComm = 0.0;
+        foreach ($commitments as $c) {
+            $dueDateStr = sprintf("%04d-%02d-%02d", $year, $month, $c['due_date_day']);
+            
+            $valid = true;
+            if (!empty($c['start_date']) && $dueDateStr < $c['start_date']) {
+                $valid = false;
+            }
+            if (!empty($c['end_date']) && $dueDateStr > $c['end_date']) {
+                $valid = false;
+            }
+            
+            if ($valid) {
+                $totalComm += (float) $c['amount'];
+            }
+        }
+        $totalComm = round($totalComm, 2);
         
         // Paid recurring (auto-inserted) in this month
         $startDate = "$year-$month-01";
@@ -237,20 +255,20 @@ class Expense {
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null): bool {
+    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null): bool {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id) VALUES (?, ?, ?, ?, ?)");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id]);
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date]);
         if ($success && $category_id) {
             self::syncTransactionsCategory($name, $category_id);
         }
         return $success;
     }
 
-    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null): bool {
+    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null): bool {
         $db = Database::getConnection();
-        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ? WHERE id = ?");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $id]);
+        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ? WHERE id = ?");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $id]);
         if ($success && $category_id) {
             self::syncTransactionsCategory($name, $category_id);
         }
@@ -274,25 +292,56 @@ class Expense {
 
     public static function processDueCommitments(): void {
         $db = Database::getConnection();
-        $currentDay = (int)date('j');
-        $currentMonth = date('m');
-        $currentYear = date('Y');
+        $todayStr = date('Y-m-d');
         
-        $stmt = $db->query("SELECT * FROM commitments WHERE due_date_day <= $currentDay");
-        $dueCommitments = $stmt->fetchAll();
+        $stmt = $db->query("SELECT * FROM commitments");
+        $commitments = $stmt->fetchAll();
         
         $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = ? AND date = ?");
         $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
         
-        foreach ($dueCommitments as $c) {
+        foreach ($commitments as $c) {
             $desc = "[Auto] " . $c['name'];
-            $dueDateStr = sprintf("%04d-%02d-%02d", $currentYear, $currentMonth, $c['due_date_day']);
             $type = $c['type'] ?? 'expense';
+            $dueDay = (int)$c['due_date_day'];
             
-            $checkStmt->execute([$desc, $type, $dueDateStr]);
-            
-            if ($checkStmt->fetchColumn() == 0) {
-                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
+            if (!empty($c['start_date'])) {
+                $startMonth = new DateTime($c['start_date']);
+                $startMonth->modify('first day of this month');
+                
+                $endLimitStr = (!empty($c['end_date']) && $c['end_date'] < $todayStr) ? $c['end_date'] : $todayStr;
+                $endMonth = new DateTime($endLimitStr);
+                $endMonth->modify('last day of this month');
+                
+                $currentIter = clone $startMonth;
+                while ($currentIter <= $endMonth) {
+                    $year = $currentIter->format('Y');
+                    $month = $currentIter->format('m');
+                    $dueDateStr = sprintf("%04d-%02d-%02d", $year, $month, $dueDay);
+                    
+                    if ($dueDateStr <= $todayStr) {
+                        if ($dueDateStr >= $c['start_date'] && (empty($c['end_date']) || $dueDateStr <= $c['end_date'])) {
+                            $checkStmt->execute([$desc, $type, $dueDateStr]);
+                            if ($checkStmt->fetchColumn() == 0) {
+                                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
+                            }
+                        }
+                    }
+                    $currentIter->modify('+1 month');
+                }
+            } else {
+                $currentYear = date('Y');
+                $currentMonth = date('m');
+                $dueDateStr = sprintf("%04d-%02d-%02d", $currentYear, $currentMonth, $dueDay);
+                
+                if ($dueDateStr <= $todayStr) {
+                    if (empty($c['end_date']) || $dueDateStr <= $c['end_date']) {
+                        $checkStmt->execute([$desc, $type, $dueDateStr]);
+                        if ($checkStmt->fetchColumn() == 0) {
+                            $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
+                        }
+                    }
+                }
             }
         }
     }

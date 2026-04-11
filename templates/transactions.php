@@ -155,67 +155,97 @@ ob_start();
         </div>
     </div>
 
-    <!-- Transactions Table -->
-    <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl border border-dark-700/50 shadow-lg overflow-hidden flex flex-col">
-        <div class="p-6 border-b border-dark-700/50 flex justify-between items-center">
-            <h3 class="text-lg font-bold text-white">Monthly Transactions Data</h3>
-            <span class="text-sm text-gray-400 font-medium px-3 py-1 bg-dark-900 rounded-lg">
-                <?= htmlspecialchars((string)date('F Y', mktime(0,0,0,$month,1,$year)), ENT_QUOTES, 'UTF-8') ?>
-            </span>
-        </div>
-        <div class="overflow-x-auto flex-1 p-0">
-            <table class="w-full text-left text-sm text-gray-400">
-                <thead class="text-xs text-gray-500 uppercase bg-dark-900/50 border-b border-dark-700/50">
-                    <tr>
-                        <th class="px-6 py-4 font-semibold tracking-wider">Date</th>
-                        <th class="px-6 py-4 font-semibold tracking-wider">Category</th>
-                        <th class="px-6 py-4 font-semibold tracking-wider">Description</th>
-                        <th class="px-6 py-4 font-semibold tracking-wider text-right">Amount (RM)</th>
-                        <th class="px-4 py-4 font-semibold tracking-wider text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-dark-700/30">
-                    <?php if(empty($transactions)): ?>
-                        <tr><td colspan="5" class="px-6 py-12 text-center text-gray-500">
-                            <div class="flex flex-col items-center gap-2">
-                                <svg class="w-8 h-8 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <span>No transactions recorded for <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?>.</span>
+    <!-- Transactions List -->
+    <div class="mb-8">
+        <?php if(empty($transactions)): ?>
+            <div class="bg-dark-900 border border-dark-800 rounded-2xl p-12 text-center text-gray-500 shadow-lg">
+                <div class="flex flex-col items-center gap-2">
+                    <svg class="w-8 h-8 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>No transactions recorded for <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?>.</span>
+                </div>
+            </div>
+        <?php else: ?>
+            <?php 
+            $groupedTransactions = [];
+            foreach ($transactions as $t) {
+                $groupedTransactions[$t['date']][] = $t;
+            }
+            ?>
+            <div class="space-y-4">
+                <?php foreach ($groupedTransactions as $date => $dayTransactions): ?>
+                    <div class="bg-dark-900 border border-dark-800 rounded-xl overflow-hidden shadow-sm">
+                        <!-- Date Header -->
+                        <?php
+                            $dayIncome = array_sum(array_map(fn($t) => $t['type'] === 'income' ? $t['amount'] : 0, $dayTransactions));
+                            $dayExpense = array_sum(array_map(fn($t) => $t['type'] === 'expense' ? $t['amount'] : 0, $dayTransactions));
+                        ?>
+                        <div class="px-4 py-3 border-b border-dark-800/80 flex justify-between items-center bg-dark-900/50">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl font-bold text-white leading-none"><?= date('d', strtotime($date)) ?></span>
+                                <span class="text-xs font-bold text-dark-900 px-2 py-0.5 rounded-full tracking-wide" style="background-color: #d8b4fe;"><?= date('D', strtotime($date)) ?></span>
+                                <span class="text-sm text-gray-400 font-medium"><?= date('m/Y', strtotime($date)) ?></span>
                             </div>
-                        </td></tr>
-                    <?php else: ?>
-                        <?php foreach($transactions as $t): ?>
-                            <tr class="hover:bg-dark-700/20 transition-colors group">
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-300"><?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-2.5 h-2.5 rounded-full" style="background-color: <?= htmlspecialchars((string)($t['color_hex'] ?? '#ccc'), ENT_QUOTES, 'UTF-8') ?>"></div>
-                                        <span class="font-medium text-gray-300"><?= htmlspecialchars((string)($t['category_name'] ?? 'Uncategorized'), ENT_QUOTES, 'UTF-8') ?></span>
+                            <div class="flex items-center gap-6 text-[15px] font-semibold tracking-tight">
+                                <?php if ($dayIncome > 0): ?>
+                                    <span class="text-blue-400">RM <?= number_format($dayIncome, 2) ?></span>
+                                <?php else: ?>
+                                    <span class="text-blue-400">RM 0.00</span>
+                                <?php endif; ?>
+                                
+                                <?php if ($dayExpense > 0): ?>
+                                    <span class="text-red-400">RM <?= number_format($dayExpense, 2) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <!-- List Items -->
+                        <div class="divide-y divide-dark-800/50">
+                            <?php foreach ($dayTransactions as $t): ?>
+                                <div class="px-4 py-3.5 flex items-center justify-between hover:bg-dark-800/30 transition-colors group relative">
+                                    <div class="flex flex-row items-center min-w-0 flex-1 gap-2">
+                                        <!-- Left Column: Category -->
+                                        <div class="w-20 shrink-0 flex items-center gap-1.5 overflow-hidden">
+                                            <span class="text-xs font-medium text-gray-400 truncate"><?= htmlspecialchars_decode((string)($t['category_name'] ?? 'Uncategorized'), ENT_QUOTES) ?></span>
+                                        </div>
+                                        
+                                        <!-- Middle Column: Description -->
+                                        <div class="flex flex-col min-w-0 flex-1">
+                                            <div class="text-[15px] font-bold text-gray-200 truncate leading-tight">
+                                                <?= htmlspecialchars((string)$t['description'], ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                            <div class="text-[11px] text-gray-500 truncate mt-0.5">
+                                                Cash
+                                            </div>
+                                        </div>
                                     </div>
-                                </td>
-                                <td class="px-6 py-4 text-gray-300"><?= htmlspecialchars((string)$t['description'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="px-6 py-4 text-right font-medium text-base <?= $t['type'] === 'income' ? 'text-brand-400' : 'text-gray-100' ?>">
-                                    <?= $t['type'] === 'income' ? '+' : '-' ?><?= number_format($t['amount'], 2) ?>
-                                </td>
-                                <td class="px-4 py-4">
-                                    <div class="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button type="button" onclick="openEditModal(<?= $t['id'] ?>, '<?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?>', <?= $t['category_id'] ?>, '<?= htmlspecialchars((string)$t['description'], ENT_QUOTES, 'UTF-8') ?>', <?= $t['amount'] ?>, '<?= $t['type'] ?>')" class="text-gray-500 hover:text-brand-400 p-2 rounded-lg hover:bg-brand-500/10 transition-colors">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                        </button>
-                                        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');">
-                                            <input type="hidden" name="action" value="delete_transaction">
-                                            <input type="hidden" name="id" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
-                                            <button type="submit" class="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    
+                                    <!-- Right Column: Amount & Actions -->
+                                    <div class="flex items-center gap-3 shrink-0 ml-4">
+                                        <div class="text-[15px] font-bold text-right tracking-tight <?= $t['type'] === 'income' ? 'text-blue-400' : 'text-red-400' ?>">
+                                            RM <?= number_format($t['amount'], 2) ?>
+                                        </div>
+                                        
+                                        <!-- Subtle Hover Actions -->
+                                        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 bg-dark-900/95 shadow-lg border border-dark-700/50 rounded-lg px-1 py-0.5 z-10 hidden sm:flex">
+                                            <button type="button" onclick="openEditModal(<?= $t['id'] ?>, '<?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?>', <?= (int)($t['category_id'] ?? 0) ?>, '<?= htmlspecialchars(str_replace("'", "\'", (string)$t['description']), ENT_QUOTES, 'UTF-8') ?>', <?= $t['amount'] ?>, '<?= $t['type'] ?>')" class="text-gray-400 hover:text-brand-400 p-1.5 rounded-md hover:bg-dark-800 transition-colors" title="Edit">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                             </button>
-                                        </form>
+                                            <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');" class="inline">
+                                                <input type="hidden" name="action" value="delete_transaction">
+                                                <input type="hidden" name="id" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
+                                                <button type="submit" class="text-gray-400 hover:text-red-400 p-1.5 rounded-md hover:bg-dark-800 transition-colors" title="Delete">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </form>
+                                        </div>
                                     </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 </div>
