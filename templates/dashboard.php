@@ -1,165 +1,126 @@
 <?php
-// templates/dashboard.php
 require_once __DIR__ . '/../src/Settings.php';
 require_once __DIR__ . '/../src/Expense.php';
 
-$reqMonth = $_GET['month'] ?? date('Y-m');
-$parts = explode('-', $reqMonth);
-if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
-    $year = $parts[0];
-    $month = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
-} else {
-    $year = date('Y');
-    $month = date('m');
-    $reqMonth = "$year-$month";
-}
-
-$prevMonth = date('Y-m', strtotime($reqMonth . '-01 -1 month'));
-$nextMonth = date('Y-m', strtotime($reqMonth . '-01 +1 month'));
-$currentDisplay = date('F Y', strtotime($reqMonth . '-01'));
+$m = Helper::parseMonth();
+$year = $m['year'];
+$month = $m['month'];
+$reqMonth = $m['reqMonth'];
+$prevMonth = $m['prevMonth'];
+$nextMonth = $m['nextMonth'];
+$currentDisplay = $m['currentDisplay'];
 
 $incomeThisMonth = round(Expense::getTotalIncome($month, $year), 2);
 $expensesThisMonth = round(Expense::getTotalExpense($month, $year), 2);
-
 $onHandBalance = Expense::getOnHandBalance($month, $year);
 $projectedBalance = Expense::getEOMProjection($month, $year);
-
 $expensesByCategory = Expense::getExpensesByCategory($month, $year);
 
 ob_start();
 ?>
-<div>
-    <!-- dynamic month navigation & header -->
-    <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-            <h2 class="text-3xl font-bold tracking-tight mb-1 text-white">Dashboard Overview</h2>
-            <p class="text-gray-400">High-level financial analytics and projections.</p>
-        </div>
-        
-        <div class="flex items-center bg-dark-800 border border-dark-700 rounded-xl p-1 shadow-inner h-fit">
-            <a href="?month=<?= htmlspecialchars((string)$prevMonth, ENT_QUOTES, 'UTF-8') ?>" class="p-2 text-gray-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            </a>
-            <span class="px-4 font-semibold text-sm text-gray-200 min-w-32 text-center w-36"><?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></span>
-            <a href="?month=<?= htmlspecialchars((string)$nextMonth, ENT_QUOTES, 'UTF-8') ?>" class="p-2 text-gray-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-            </a>
-        </div>
+
+<!-- Header -->
+<div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h2 class="text-2xl font-bold" style="color:var(--text);">Dashboard</h2>
+        <p class="mt-0.5 text-sm" style="color:var(--text-secondary);">Overview of your financial position.</p>
     </div>
-
-    <!-- Stats Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        
-        <!-- Projected End-of-Month Balance -->
-        <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <svg class="w-16 h-16 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-            </div>
-            <p class="text-sm font-medium text-gray-400 mb-2">Projected EOM Balance</p>
-            <h3 class="text-3xl font-bold text-white mb-1 tooltip" title="Start Bal + All Month Income - All Month Expenses - Unpaid Recurring Items">RM <?= number_format($projectedBalance, 2, '.', '') ?></h3>
-            <div class="flex items-center text-xs text-blue-400 font-medium">
-                End of Month Est.
-            </div>
-        </div>
-
-        <!-- On Hand Balance -->
-        <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <svg class="w-16 h-16 text-brand-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-            </div>
-            <p class="text-sm font-medium text-gray-400 mb-2">On Hand Balance</p>
-            <h3 class="text-3xl font-bold text-white mb-1" title="Starts + Income (to date) - Expenses (to date)">RM <?= number_format($onHandBalance, 2, '.', '') ?></h3>
-            <div class="flex items-center text-xs text-brand-400 font-medium">
-                Liquidity to Date
-            </div>
-        </div>
-
-        <!-- Income -->
-        <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-            <p class="text-sm font-medium text-gray-400 mb-2">Income (<?= htmlspecialchars((string)date('M', mktime(0,0,0,$month,1)), ENT_QUOTES, 'UTF-8') ?>)</p>
-            <h3 class="text-3xl font-bold text-white mb-1">RM <?= number_format($incomeThisMonth, 2, '.', '') ?></h3>
-        </div>
-
-        <!-- Expenses -->
-        <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-            <p class="text-sm font-medium text-gray-400 mb-2">Expenses (<?= htmlspecialchars((string)date('M', mktime(0,0,0,$month,1)), ENT_QUOTES, 'UTF-8') ?>)</p>
-            <h3 class="text-3xl font-bold text-white mb-1">RM <?= number_format($expensesThisMonth, 2, '.', '') ?></h3>
-        </div>
+    <div class="flex items-center rounded-lg border p-0.5 text-sm" style="background:var(--bg-alt);border-color:var(--border);">
+        <a href="?month=<?= htmlspecialchars((string)$prevMonth, ENT_QUOTES, 'UTF-8') ?>" class="rounded-md px-3 py-1.5 transition-colors" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='';this.style.color='var(--text-secondary)'">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </a>
+        <span class="min-w-[120px] px-3 text-center font-semibold" style="color:var(--text);"><?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></span>
+        <a href="?month=<?= htmlspecialchars((string)$nextMonth, ENT_QUOTES, 'UTF-8') ?>" class="rounded-md px-3 py-1.5 transition-colors" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='';this.style.color='var(--text-secondary)'">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </a>
     </div>
+</div>
 
-    <!-- Main Data & Charts -->
-    <div class="grid grid-cols-1 gap-6">
-        <!-- Chart -->
-        <div class="bg-dark-800/80 backdrop-blur-md rounded-2xl p-6 border border-dark-700/50 shadow-lg flex flex-col justify-center max-w-4xl mx-auto w-full">
-            <h3 class="text-lg font-bold text-white mb-6 text-center">Monthly Expense Breakdown (<?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?>)</h3>
-            <div class="h-80 flex items-center justify-center relative">
-                <?php if (empty($expensesByCategory)): ?>
-                    <p class="text-gray-500 text-sm">No expenses this month to chart.</p>
-                <?php else: ?>
-                    <canvas id="expenseChart"></canvas>
-                <?php endif; ?>
-            </div>
-            
-            <?php if (!empty($expensesByCategory)): ?>
-                <?php
-                $totalExpenseDenominator = array_sum(array_column($expensesByCategory, 'total'));
-                ?>
-                <div class="mt-8 pt-4">
-                    <div class="divide-y divide-dark-700/50 rounded-xl overflow-hidden shadow-sm bg-dark-900 border border-dark-800">
-                        <?php foreach ($expensesByCategory as $cat): ?>
-                            <?php 
-                            $percent = $totalExpenseDenominator > 0 ? ($cat['total'] / $totalExpenseDenominator) * 100 : 0; 
-                            ?>
-                            <div class="py-3.5 px-4 flex items-center justify-between group hover:bg-dark-800/30 transition-colors">
-                                <div class="flex items-center gap-4 min-w-0">
-                                    <div class="w-11 px-0.5 py-1 rounded text-center text-xs font-black text-dark-900 shrink-0" style="background-color: <?= htmlspecialchars((string)$cat['color_hex'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <?= number_format($percent, 0) ?>%
-                                    </div>
-                                    <span class="text-[15px] font-medium text-gray-300 truncate"><?= htmlspecialchars_decode((string)$cat['name'], ENT_QUOTES) ?></span>
-                                </div>
-                                <div class="flex items-center gap-2 shrink-0 ml-4">
-                                    <span class="text-[15px] font-bold text-white tracking-tight">RM <?= number_format($cat['total'], 2) ?></span>
-                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
+<!-- Stat Cards -->
+<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+        <p class="text-xs font-medium" style="color:var(--text-muted);">On Hand</p>
+        <p class="mt-2 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($onHandBalance, 2) ?></p>
+        <p class="mt-1 text-xs" style="color:var(--success);">Available now</p>
+    </div>
+    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+        <p class="text-xs font-medium" style="color:var(--text-muted);">EOM Projection</p>
+        <p class="mt-2 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($projectedBalance, 2) ?></p>
+        <p class="mt-1 text-xs" style="color:var(--accent);">End of month est.</p>
+    </div>
+    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+        <p class="text-xs font-medium" style="color:var(--text-muted);">Income</p>
+        <p class="mt-2 text-2xl font-bold" style="color:var(--income);">RM <?= number_format($incomeThisMonth, 2) ?></p>
+        <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)date('M', mktime(0,0,0,(int)$month,1)), ENT_QUOTES, 'UTF-8') ?></p>
+    </div>
+    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+        <p class="text-xs font-medium" style="color:var(--text-muted);">Expenses</p>
+        <p class="mt-2 text-2xl font-bold" style="color:var(--expense);">RM <?= number_format($expensesThisMonth, 2) ?></p>
+        <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)date('M', mktime(0,0,0,(int)$month,1)), ENT_QUOTES, 'UTF-8') ?></p>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="rounded-xl border p-6" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+    <h3 class="mb-6 text-center text-lg font-bold" style="color:var(--text);">Expense Breakdown &mdash; <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></h3>
+
+    <?php if (empty($expensesByCategory)): ?>
+        <p class="py-12 text-center text-sm" style="color:var(--text-muted);">No expenses recorded this month.</p>
+    <?php else: ?>
+        <div class="mx-auto h-72 max-w-md">
+            <canvas id="expenseChart"></canvas>
+        </div>
+        <?php $totalExp = array_sum(array_column($expensesByCategory, 'total')); ?>
+        <div class="mt-6 space-y-1 rounded-lg border" style="border-color:var(--border-light);">
+            <?php foreach ($expensesByCategory as $cat): ?>
+                <?php $pct = $totalExp > 0 ? ($cat['total'] / $totalExp) * 100 : 0; ?>
+                <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--border-light);">
+                    <div class="flex items-center gap-3">
+                        <div class="h-3 w-3 rounded-full shrink-0" style="background:<?= htmlspecialchars((string)$cat['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></div>
+                        <span class="text-sm font-medium" style="color:var(--text);"><?= htmlspecialchars((string)$cat['name'], ENT_QUOTES, 'UTF-8') ?></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-medium rounded px-2 py-0.5" style="background:var(--bg-hover);color:var(--text-secondary);"><?= number_format($pct, 0) ?>%</span>
+                        <span class="text-sm font-semibold" style="color:var(--expense);">RM <?= number_format($cat['total'], 2) ?></span>
                     </div>
                 </div>
-            <?php endif; ?>
+            <?php endforeach; ?>
         </div>
-    </div>
+    <?php endif; ?>
 </div>
 
 <?php if (!empty($expensesByCategory)): ?>
 <script>
-    const ctx = document.getElementById('expenseChart').getContext('2d');
-    const dataLabels = <?= json_encode(array_map(function($c) { return htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8'); }, $expensesByCategory)) ?>;
-    const dataValues = <?= json_encode(array_column($expensesByCategory, 'total')) ?>;
-    const dataColors = <?= json_encode(array_column($expensesByCategory, 'color_hex')) ?>;
-
+(function(){
+    var ctx = document.getElementById('expenseChart').getContext('2d');
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: dataLabels,
+            labels: <?= json_encode(array_map(fn($c) => htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8'), $expensesByCategory)) ?>,
             datasets: [{
-                data: dataValues,
-                backgroundColor: dataColors,
+                data: <?= json_encode(array_column($expensesByCategory, 'total')) ?>,
+                backgroundColor: <?= json_encode(array_column($expensesByCategory, 'color_hex')) ?>,
                 borderWidth: 0,
-                hoverOffset: 4
-            }]
+                hoverOffset: 4,
+            }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '75%',
+            cutout: '72%',
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: '#94a3b8', font: { family: "'Outfit', sans-serif" }, padding: 15 }
-                }
-            }
-        }
+                    labels: {
+                        color: document.documentElement.classList.contains('dark') ? '#8890a5' : '#6b7280',
+                        font: { family: "'Outfit', sans-serif" },
+                        padding: 14,
+                    },
+                },
+            },
+        },
     });
+})();
 </script>
 <?php endif; ?>
 

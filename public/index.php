@@ -15,6 +15,7 @@ session_start();
 
 // Auto-load core classes
 spl_autoload_register(function ($class_name) {
+
     $file = __DIR__ . '/../src/' . $class_name . '.php';
     if (file_exists($file)) {
         require_once $file;
@@ -23,6 +24,8 @@ spl_autoload_register(function ($class_name) {
 
 // Initialize the database and ensure tables exist
 Database::getConnection();
+
+Csrf::validate();
 
 // Basic Router
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -143,41 +146,45 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $db = Database::getConnection();
             $db->beginTransaction();
             try {
-                // skip header
                 fgetcsv($handle);
                 $stmtCat = $db->prepare("SELECT id FROM categories WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND type = ? LIMIT 1");
-                $stmtCreateCat = $db->prepare("INSERT INTO categories (name, type) VALUES (?, ?)");
+                $stmtCreateCat = $db->prepare("INSERT INTO categories (name, type, color_hex) VALUES (?, ?, ?)");
                 $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
+                $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) LIMIT 1");
+
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
-                    if (count($data) >= 5) {
-                        $date = trim($data[0] ?? '');
-                        $type = trim($data[1] ?? '');
-                        $amount = round((float)($data[2] ?? 0), 2);
-                        $categoryName = trim($data[3] ?? '');
-                        $description = trim($data[4] ?? '');
+                    if (count($data) < 5) {
+                        continue;
+                    }
+                    $date = trim($data[0] ?? '');
+                    $type = trim($data[1] ?? '');
+                    $amount = round((float)($data[2] ?? 0), 2);
+                    $categoryName = trim($data[3] ?? '');
+                    $description = trim($data[4] ?? '');
 
-                        $catId = null;
-                        if ($categoryName !== '') {
-                            $stmtCat->execute([$categoryName, $type]);
-                            $cat = $stmtCat->fetch();
-                            if ($cat) {
-                                $catId = $cat['id'];
-                            } else {
-                                $stmtCreateCat->execute([$categoryName, $type]);
-                                $catId = $db->lastInsertId();
-                            }
-                        }
+                    if ($date === '' || $amount <= 0 || !in_array($type, ['income', 'expense'], true)) {
+                        continue;
+                    }
 
-                        $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) AND category_id " . ($catId === null ? "IS NULL" : "= ?") . " LIMIT 1");
-                        if ($catId === null) {
-                            $stmtCheck->execute([$date, $amount, $type, $description]);
+                    $stmtCheck->execute([$date, $amount, $type, $description]);
+                    if ($stmtCheck->fetchColumn()) {
+                        continue;
+                    }
+
+                    $catId = null;
+                    if ($categoryName !== '') {
+                        $stmtCat->execute([$categoryName, $type]);
+                        $cat = $stmtCat->fetch();
+                        if ($cat) {
+                            $catId = $cat['id'];
                         } else {
-                            $stmtCheck->execute([$date, $amount, $type, $description, $catId]);
-                        }
-                        if (!$stmtCheck->fetchColumn()) {
-                            $stmtInsert->execute([$catId, $amount, $type, $description, $date]);
+                            $colorHex = '#' . substr(md5($categoryName . $type), 0, 6);
+                            $stmtCreateCat->execute([$categoryName, $type, $colorHex]);
+                            $catId = (int) $db->lastInsertId();
                         }
                     }
+
+                    $stmtInsert->execute([$catId, $amount, $type, $description, $date]);
                 }
                 $db->commit();
                 fclose($handle);
@@ -186,6 +193,7 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (Exception $e) {
                 $db->rollBack();
                 fclose($handle);
+                error_log('CSV import failed: ' . $e->getMessage());
             }
         }
     }
