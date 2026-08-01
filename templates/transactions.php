@@ -565,112 +565,83 @@ function toggleTemplateForm() {
     if (!f.classList.contains('hidden')) f.querySelector('input[type="text"]').focus();
 }
 
-// Undo delete
-var _undoData = null, _undoTimer = null;
-document.querySelectorAll('form[onsubmit*="Delete this transaction?"]').forEach(function(f) {
-    f.addEventListener('submit', function(e) {
-        e.preventDefault();
-        if (!confirm('Delete this transaction?')) return;
-        var row = f.closest('.transaction-row');
-        _undoData = {
-            type: row.querySelector('[style*="var(--income)"]') ? 'income' : 'expense',
-            amount: parseFloat(row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent.replace('RM ', '').replace(',', '')),
-            description: row.querySelector('p').textContent.trim(),
-            category_id: parseInt(f.previousElementSibling.getAttribute('onclick').match(/openEdit\((\d+)/)[1]) === parseInt(f.previousElementSibling.getAttribute('onclick').match(/, (\d+),/)[1]) ? f.previousElementSibling.getAttribute('onclick').match(/, (\d+),/)[1] : 0,
-            date: row.getAttribute('data-date'),
-            form: f,
-            row: row
-        };
-        // Actually we need catId properly - let me do this differently
-        _undoData.form = f;
-        _undoData.row = row;
-        // Just submit and capture what we need
-    });
-});
-
-// Simpler approach: override the delete forms
+// Undo delete — intercept delete forms, store data in sessionStorage before submit
 (function() {
+    var toast = document.getElementById('undoToast');
+    var clearUndoTimer = null;
+
+    // Check for pending undo on page load
+    var pending = sessionStorage.getItem('undoData');
+    if (pending) {
+        showUndoToast();
+    }
+
+    // Attach to all delete forms
     document.querySelectorAll('form').forEach(function(f) {
         var onsubmit = f.getAttribute('onsubmit');
-        if (onsubmit && onsubmit.indexOf('Delete this transaction') > -1) {
-            f.removeAttribute('onsubmit');
-            f.addEventListener('submit', handleDelete);
-        }
-    });
+        if (!onsubmit || onsubmit.indexOf('Delete this transaction') < 0) return;
 
-    function handleDelete(e) {
-        e.preventDefault();
-        if (!confirm('Delete this transaction?')) return;
-        var f = e.target.closest('form');
-        var row = f.closest('.transaction-row');
-        var date = row.getAttribute('data-date');
-        var desc = row.querySelector('p').textContent.trim();
-        var amtText = row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent.replace('RM ', '').trim();
-        var amount = parseFloat(amtText);
-        var isIncome = row.querySelector('[style*="var(--income)"]') !== null;
-        var catEl = row.querySelector('select[name="category_id"]') 
-            ? null 
-            : null;
+        f.removeAttribute('onsubmit');
+        f.addEventListener('submit', function(e) {
+            if (!confirm('Delete this transaction?')) { e.preventDefault(); return; }
 
-        // Build undo data from what's visible
-        _undoData = {
-            date: date,
-            type: isIncome ? 'income' : 'expense',
-            amount: amount,
-            description: desc,
-            category_id: 0,
-            form: f
-        };
+            var form = this;
+            var row = form.closest('.transaction-row');
+            var date = row.getAttribute('data-date');
+            var desc = row.querySelector('p').textContent.trim();
+            var amtText = row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent;
+            var amount = parseFloat(amtText.replace(/[^0-9.]/g, ''));
+            var isIncome = row.querySelector('[style*="var(--income)"]') !== null;
+            var catId = 0;
+            var editBtn = row.querySelector('button[onclick*="openEdit"]');
+            if (editBtn) {
+                var m = editBtn.getAttribute('onclick').match(/openEdit\(\d+,\s*'[^']*',\s*(\d+)/);
+                if (m) catId = parseInt(m[1]);
+            }
 
-        // Try to get category_id from the edit button onclick
-        var editBtn = row.querySelector('button[onclick*="openEdit"]');
-        if (editBtn) {
-            var onclick = editBtn.getAttribute('onclick');
-            var m = onclick.match(/openEdit\(\d+,\s*'[^']*',\s*(\d+)/);
-            if (m) _undoData.category_id = parseInt(m[1]);
-        }
+            sessionStorage.setItem('undoData', JSON.stringify({
+                date: date, type: isIncome ? 'income' : 'expense', amount: amount,
+                description: desc, category_id: catId, month: '<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>'
+            }));
 
-        // Submit delete
-        var formData = new FormData(f);
-        fetch(f.action, {method: 'POST', body: new URLSearchParams(formData)}).then(function() {
-            showUndoToast();
+            // Let form submit normally — page will reload
         });
-    }
-})();
-
-function showUndoToast() {
-    var toast = document.getElementById('undoToast');
-    toast.classList.remove('hidden');
-    toast.classList.add('flex');
-    _undoTimer = setTimeout(dismissUndo, 8000);
-}
-
-function dismissUndo() {
-    document.getElementById('undoToast').classList.add('hidden');
-    document.getElementById('undoToast').classList.remove('flex');
-    _undoData = null;
-    clearTimeout(_undoTimer);
-}
-
-function undoDelete() {
-    if (!_undoData) return;
-    var d = _undoData;
-    var data = new URLSearchParams();
-    data.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
-    data.append('action', 'add_transaction');
-    data.append('type', d.type);
-    data.append('amount', d.amount);
-    data.append('description', d.description);
-    data.append('category_id', d.category_id);
-    data.append('date', d.date);
-    fetch('/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>', {
-        method: 'POST',
-        body: data
-    }).then(function() {
-        location.reload();
     });
-    dismissUndo();
-}
+
+    function showUndoToast() {
+        toast.classList.remove('hidden');
+        toast.classList.add('flex');
+        clearUndoTimer = setTimeout(function() { clearUndo(); }, 8000);
+    }
+
+    function clearUndo() {
+        toast.classList.add('hidden');
+        toast.classList.remove('flex');
+        sessionStorage.removeItem('undoData');
+    }
+
+    // Expose to onclick handlers in HTML
+    window.dismissUndo = clearUndo;
+    window.undoDelete = function() {
+        var raw = sessionStorage.getItem('undoData');
+        if (!raw) return;
+        var d = JSON.parse(raw);
+        var fd = new URLSearchParams();
+        fd.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+        fd.append('action', 'add_transaction');
+        fd.append('type', d.type);
+        fd.append('amount', d.amount);
+        fd.append('description', d.description);
+        fd.append('category_id', d.category_id);
+        fd.append('date', d.date);
+
+        fetch('/transactions?month=' + d.month, { method: 'POST', body: fd }).then(function() {
+            location.reload();
+        });
+
+        clearUndo();
+    };
+})();
 
 // PDF export via print
 function printTransactions() {
