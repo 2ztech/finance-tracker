@@ -1,111 +1,78 @@
 # Expenzz - Personal Finance Tracker
 
-A lightweight, mathematically rigorous personal finance tracker built with vanilla PHP 8.3 and SQLite. 
+A lightweight, mathematically rigorous personal finance tracker built with vanilla PHP 8.3 and SQLite.
 
-Unlike standard budget apps that just sum up monthly totals, Expenzz is built on **true ledger logic**. It tracks your actual physical cash (On-Hand Balance) and carries it over month-to-month, while separately calculating End-of-Month (EOM) projections based on your unpaid future commitments. 
+Unlike standard budget apps that just sum up monthly totals, Expenzz is built on **true ledger logic**. It tracks your actual physical cash (On-Hand Balance) and carries it over month-to-month, while separately calculating End-of-Month (EOM) projections based on your unpaid future commitments.
 
-## ✨ Features
+## Features
 
-* **True Ledger Carry-Over:** Month-to-month starting balances reflect actual physical cash remaining, ignoring unpaid future bills until they are actually processed.
-* **Smart EOM Projections:** Calculates your expected End-of-Month balance by taking your current cash and subtracting scheduled, unpaid monthly commitments.
-* **Commitment Tracking:** Easily manage recurring bills (e.g., loans, subscriptions). The system automatically tracks what has been paid and what is still owed for the current month.
-* **Intelligent CSV Imports:** Import bank or credit card statements with a smart deduplication engine that checks dates, amounts, types, and categories to prevent double-counting.
-* **Data Portability & Backups:** 100% self-hosted with SQLite. Export data to CSV, download full database backups, and restore the database directly from the settings UI.
-* **Dynamic Timezone Support:** Automatically syncs the app's internal PHP clock to your server's timezone via Docker environment variables.
+- **Ledger Logic:** Real cash-on-hand tracking with month-over-month balance carry-over. Future unpaid bills don't affect your current liquidity.
+- **EOM Projections:** Smart end-of-month balance estimates accounting for unpaid commitments and scheduled income.
+- **Recurring Commitments:** Auto-process bills and income with due dates, start/end date ranges, and category linking.
+- **Budget Tracking:** Set monthly spending caps per category with progress bars on the dashboard.
+- **Quick-Add Templates:** Save frequently used transactions (e.g. "Lunch at office") as one-click templates.
+- **CSV Import/Export:** Smart deduplication engine prevents double-counting on bank statement imports.
+- **Dark/Light Mode:** Toggleable theme with localStorage persistence. Easy on the eyes day or night.
+- **PDF Export:** Generate bank-statement style monthly reports with beginning/closing balance and running totals.
+- **Undo Delete:** 8-second undo toast for accidental transaction deletions.
+- **Data Portability:** 100% self-hosted SQLite. Export CSV, download/restore full database backups from the settings UI.
+- **Dynamic Timezone:** Syncs to your server's timezone via Docker environment variables.
 
-## 🛠 Tech Stack
+## Tech Stack
 
-* **Backend:** Vanilla PHP 8.3
-* **Database:** SQLite3
-* **Frontend:** HTML5, CSS (Tailwind)
-* **Deployment:** Docker & Docker Compose
+- **Backend:** Vanilla PHP 8.3
+- **Database:** SQLite3
+- **Frontend:** HTML5, Tailwind CSS, Chart.js
+- **Deployment:** Docker & Docker Compose
 
 ---
 
-## 🚀 Installation Guide
+## Docker (Recommended)
 
-You can run Expenzz either locally using PHP's built-in web server (great for quick testing and development) or via Docker (recommended for 24/7 homelab or production environments).
+```bash
+docker run -d \
+  -p 8000:80 \
+  -v ./data:/var/www/html/data \
+  -e TZ=Asia/Kuala_Lumpur \
+  2ztech/expenzz:latest
+```
 
-### Method 1: Quick Start (PHP Built-in Server)
-This is the fastest way to get the app running on your local machine without setting up containers.
+Or with Docker Compose:
 
-**Prerequisites:**
-* [Git](https://git-scm.com/downloads)
-* PHP 8.2 or higher (with the `sqlite3` extension enabled)
+```yaml
+services:
+  expenzz:
+    image: 2ztech/expenzz:latest
+    ports:
+      - "8000:80"
+    volumes:
+      - ./data:/var/www/html/data
+    environment:
+      - TZ=Asia/Kuala_Lumpur
+    restart: unless-stopped
+```
 
-**Steps:**
+[Docker Hub](https://hub.docker.com/r/2ztech/expenzz)
 
-1. **Clone the repository:**
+## Quick Start (PHP Built-in Server)
+
 ```bash
 git clone https://github.com/2ztech/finance-tracker.git
 cd finance-tracker
-```
-
-2. **Start the PHP development server:**
-Point the server to the public directory to ensure routing works correctly:
-```bash
 php -S localhost:8000 -t public
 ```
 
-3. **Access the app:**
-Open your browser and navigate to `http://localhost:8000`.
+## Default Credentials
 
----
+- **Username:** admin
+- **Password:** admin
 
-### Method 2: Docker (Recommended for Production/Homelabs)
-This method ensures the app runs in an isolated environment with all dependencies automatically handled.
+Change immediately via Settings after first login.
 
-**Prerequisites:**
-* Git
-* Docker
-* Docker Compose
+## Data Persistence
 
-**Steps:**
+Your entire database lives in `data/finance.db`. When using Docker, mount the data directory as a volume to survive container rebuilds. Backup via the Settings page or just copy the file.
 
-1. **Clone the repository:**
-```bash
-git clone https://github.com/2ztech/finance-tracker.git
-cd finance-tracker
-```
+## Contributing
 
-2. **Configure the Timezone (Optional):**
-If you need to set a specific timezone, edit the `docker-compose.yml` file and update the `TZ` environment variable.
-```yaml
-environment:
-  - TZ=Asia/Kuala_Lumpur
-```
-
-3. **Build and start the container:**
-Run the following command to build the image and start the container in the background:
-```bash
-docker-compose up -d --build
-```
-
-4. **Access the app:**
-Open your browser and navigate to `http://localhost:8080` (or replace `localhost` with your server's local IP address if hosting on a separate machine).
-
----
-
-## 🔐 Default Credentials
-
-Upon first installation, use the following default credentials to log in:
-* **Username:** admin
-* **Password:** admin
-
-*(Note: Please change these credentials immediately via the Settings page after logging in).*
-
----
-
-## 📂 Data Persistence
-
-Because Expenzz uses SQLite, your entire database is stored in a single file (`finance.db` located in the root directory).
-
-If you are using Docker, the `docker-compose.yml` is configured to mount a volume to your host machine. This ensures your database is safe and persists even if the container is restarted, updated, or destroyed.
-
-To create a manual backup at any time, simply navigate to the Settings page in the app and click "Download Database Backup".
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
+Issues and pull requests welcome.
