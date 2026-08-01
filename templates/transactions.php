@@ -48,6 +48,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $transactions = Expense::getTransactions($month, $year);
 $categories = Category::getAll();
 
+// Build print statement data (chronological order, running balance)
+$printTxns = [];
+foreach ($transactions as $t) {
+    $printTxns[$t['date'] . '-' . $t['id']] = $t;
+}
+ksort($printTxns);
+$printTxns = array_values($printTxns);
+$runningBal = Expense::getStartingBalanceForMonth($month, $year);
+$startingBalForPrint = $runningBal;
+$printRows = [];
+foreach ($printTxns as $t) {
+    if ($t['type'] === 'income') {
+        $runningBal += $t['amount'];
+        $debit = ''; $credit = number_format($t['amount'], 2);
+    } else {
+        $runningBal -= $t['amount'];
+        $debit = number_format($t['amount'], 2); $credit = '';
+    }
+    $printRows[] = [
+        'date'    => date('d/m/Y', strtotime($t['date'])),
+        'desc'    => $t['description'],
+        'debit'   => $debit,
+        'credit'  => $credit,
+        'balance' => number_format($runningBal, 2),
+    ];
+}
+$closingBalForPrint = $runningBal;
+
 ob_start();
 ?>
 
@@ -198,7 +226,9 @@ ob_start();
     <div class="flex items-center gap-2">
         <span id="filterCount" class="text-xs" style="color:var(--text-muted);"></span>
         <button onclick="clearFilters()" id="clearFilterBtn" class="hidden rounded-lg border px-3 py-2 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Clear</button>
+        <?php if ($reqMonth < date('Y-m')): ?>
         <button onclick="printTransactions()" class="rounded-lg border px-3 py-2 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" title="Export as PDF">Export PDF</button>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -336,6 +366,105 @@ ob_start();
     <button onclick="dismissUndo()" class="rounded-lg p-1" style="color:var(--text-muted);">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
+</div>
+
+<!-- Print Area -->
+<div id="printArea" style="display:none;">
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+        }
+    </style>
+    <table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a;">
+        <!-- Header -->
+        <tr>
+            <td style="padding:0 0 20px 0;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <tr>
+                        <td style="width:70%;">
+                            <div style="font-size:22px;font-weight:700;color:#1a3a6b;letter-spacing:-0.5px;">EXPENZZ</div>
+                            <div style="font-size:12px;color:#4a6a9b;margin-top:2px;">Personal Finance Ledger</div>
+                        </td>
+                        <td style="width:30%;text-align:right;vertical-align:bottom;">
+                            <div style="font-size:14px;font-weight:700;color:#1a3a6b;">MONTHLY STATEMENT</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+
+        <!-- Info Line -->
+        <tr><td style="border-top:2px solid #1a3a6b;padding-top:14px;">
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <tr>
+                    <td style="width:50%;"><strong>Account:</strong> <?= htmlspecialchars((string)($_SESSION['username'] ?? 'User'), ENT_QUOTES, 'UTF-8') ?></td>
+                    <td style="width:50%;text-align:right;" id="print-period"><strong>Period:</strong> <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></td>
+                </tr>
+            </table>
+        </td></tr>
+
+        <!-- Table Header -->
+        <tr>
+            <td style="padding-top:20px;">
+                <table style="width:100%;border-collapse:collapse;font-size:11px;" id="print-table">
+                    <thead>
+                        <tr style="background:#f0f3f8;">
+                            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #1a3a6b;font-weight:700;">Date</th>
+                            <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #1a3a6b;font-weight:700;">Description</th>
+                            <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #1a3a6b;font-weight:700;">Debit (RM)</th>
+                            <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #1a3a6b;font-weight:700;">Credit (RM)</th>
+                            <th style="padding:8px 10px;text-align:right;border-bottom:2px solid #1a3a6b;font-weight:700;">Balance (RM)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="print-body">
+                        <tr style="background:#eef1f6;font-weight:600;">
+                            <td style="padding:6px 10px;border-bottom:1px solid #c5cdd8;">&nbsp;</td>
+                            <td style="padding:6px 10px;border-bottom:1px solid #c5cdd8;">Beginning Balance</td>
+                            <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c5cdd8;"></td>
+                            <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c5cdd8;"></td>
+                            <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c5cdd8;font-variant-numeric:tabular-nums;color:#1a3a6b;"><?= number_format($startingBalForPrint, 2) ?></td>
+                        </tr>
+                        <?php foreach ($printRows as $i => $r): ?>
+                            <tr style="<?= $i % 2 === 0 ? 'background:#f8f9fb;' : '' ?>">
+                                <td style="padding:6px 10px;border-bottom:1px solid #e5e9f0;font-variant-numeric:tabular-nums;"><?= htmlspecialchars((string)$r['date'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td style="padding:6px 10px;border-bottom:1px solid #e5e9f0;"><?= htmlspecialchars((string)$r['desc'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #e5e9f0;font-variant-numeric:tabular-nums;<?= $r['debit'] ? 'color:#c0392b;' : '' ?>"><?= $r['debit'] ?></td>
+                                <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #e5e9f0;font-variant-numeric:tabular-nums;<?= $r['credit'] ? 'color:#27ae60;' : '' ?>"><?= $r['credit'] ?></td>
+                                <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #e5e9f0;font-weight:600;font-variant-numeric:tabular-nums;color:#1a3a6b;"><?= $r['balance'] ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php
+                        $totalDebit = array_sum(array_column($printRows, 'debit') ? array_map(fn($r) => (float) str_replace(',', '', $r['debit'] ?: '0'), $printRows) : []);
+                        $totalCredit = array_sum(array_map(fn($r) => (float) str_replace(',', '', $r['credit'] ?: '0'), $printRows));
+                        ?>
+                        <tr style="background:#f0f3f8;font-weight:700;">
+                            <td style="padding:8px 10px;border-top:2px solid #1a3a6b;" colspan="2">Summary</td>
+                            <td style="padding:8px 10px;text-align:right;border-top:2px solid #1a3a6b;color:#c0392b;font-variant-numeric:tabular-nums;"><?= number_format(array_sum(array_map(fn($t) => $t['type'] === 'expense' ? $t['amount'] : 0, $printTxns)), 2) ?></td>
+                            <td style="padding:8px 10px;text-align:right;border-top:2px solid #1a3a6b;color:#27ae60;font-variant-numeric:tabular-nums;"><?= number_format(array_sum(array_map(fn($t) => $t['type'] === 'income' ? $t['amount'] : 0, $printTxns)), 2) ?></td>
+                            <td style="padding:8px 10px;text-align:right;border-top:2px solid #1a3a6b;font-variant-numeric:tabular-nums;color:#1a3a6b;"></td>
+                        </tr>
+                        <tr style="background:#eef1f6;font-weight:700;">
+                            <td style="padding:8px 10px;">&nbsp;</td>
+                            <td style="padding:8px 10px;">Closing Balance</td>
+                            <td style="padding:8px 10px;text-align:right;"></td>
+                            <td style="padding:8px 10px;text-align:right;"></td>
+                            <td style="padding:8px 10px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:#1a3a6b;">RM <?= number_format($closingBalForPrint, 2) ?></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+            <td style="border-top:1px solid #c5cdd8;padding-top:14px;font-size:10px;color:#7a8599;text-align:center;">
+                Generated by Expenzz &bull; <?= date('d F Y, h:i A') ?><br>
+                This statement is for personal reference only.
+            </td>
+        </tr>
+    </table>
 </div>
 
 <script>
@@ -545,11 +674,9 @@ function undoDelete() {
 
 // PDF export via print
 function printTransactions() {
-    var style = document.createElement('style');
-    style.textContent = '@media print { body { visibility: hidden; } #print-area, #print-area * { visibility: visible; } #print-area { position: absolute; left: 0; top: 0; width: 100%; } }';
-    document.head.appendChild(style);
+    document.getElementById('printArea').style.display = '';
     window.print();
-    document.head.removeChild(style);
+    document.getElementById('printArea').style.display = 'none';
 }
 </script>
 
