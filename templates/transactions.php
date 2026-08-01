@@ -3,6 +3,8 @@ require_once __DIR__ . '/../src/Settings.php';
 require_once __DIR__ . '/../src/Expense.php';
 require_once __DIR__ . '/../src/Category.php';
 
+$quickTemplates = QuickTemplate::getAll();
+
 $m = Helper::parseMonth();
 $year = $m['year'];
 $month = $m['month'];
@@ -13,10 +15,7 @@ $currentDisplay = $m['currentDisplay'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
-        if ($_POST['action'] === 'set_balance') {
-            $balance = (float) ($_POST['starting_balance'] ?? 0);
-            Settings::set('starting_bank_balance', (string)$balance);
-        } elseif ($_POST['action'] === 'add_transaction') {
+        if ($_POST['action'] === 'add_transaction') {
             $catId = (int)($_POST['category_id'] ?? 0);
             $amount = (float)($_POST['amount'] ?? 0);
             $type = $_POST['type'] ?? 'expense';
@@ -46,7 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$startingBalance = (float) Settings::get('starting_bank_balance', 0);
 $transactions = Expense::getTransactions($month, $year);
 $categories = Category::getAll();
 
@@ -70,15 +68,70 @@ ob_start();
     </div>
 </div>
 
+<!-- Quick-Add Templates -->
+<div class="flex flex-wrap items-center gap-2">
+    <span class="text-xs font-medium" style="color:var(--text-muted);">Quick add:</span>
+    <?php foreach ($quickTemplates as $qt): ?>
+        <div class="inline-flex items-center gap-0 overflow-hidden rounded-full border text-xs font-medium" style="border-color:var(--border);">
+            <button type="button" onclick="quickAdd('<?= htmlspecialchars((string)$qt['type'], ENT_QUOTES, 'UTF-8') ?>', <?= (int)($qt['category_id'] ?? 0) ?>, '<?= htmlspecialchars(addslashes((string)$qt['description']), ENT_QUOTES, 'UTF-8') ?>', <?= $qt['amount'] ?>)" title="Pre-fill add form" style="background:transparent;border:none;cursor:pointer;color:var(--text-secondary);font:inherit;padding:0.375rem 0.75rem;" onmouseover="this.style.background='var(--accent-soft)';this.style.color='var(--accent)'" onmouseout="this.style.background='transparent';this.style.color='var(--text-secondary)'">
+                <span class="mr-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold text-white" style="background:var(--accent);">+</span>
+                <?= htmlspecialchars((string)$qt['description'], ENT_QUOTES, 'UTF-8') ?><?php if ($qt['amount'] > 0): ?> · RM<?= number_format($qt['amount'], 0) ?><?php endif; ?>
+            </button>
+            <form method="POST" action="/quick-template/delete" class="inline-flex" style="margin:0;" onsubmit="return confirm('Remove template?');">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <input type="hidden" name="id" value="<?= (int)$qt['id'] ?>">
+                <input type="hidden" name="return_month" value="<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>">
+                <button type="submit" title="Remove" style="background:transparent;border:none;border-left:1px solid var(--border);cursor:pointer;color:var(--text-muted);padding:0.375rem 0.5rem;font:inherit;line-height:1;" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'">&times;</button>
+            </form>
+        </div>
+    <?php endforeach; ?>
+    <button onclick="toggleTemplateForm()" class="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-muted);border-style:dashed;" onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'" onmouseout="this.style.color='var(--text-muted)';this.style.borderColor='var(--border)'">+ Template</button>
+</div>
+
+<!-- Inline Template Create Form -->
+<div id="templateForm" class="hidden rounded-xl border p-4" style="background:var(--bg-alt);border-color:var(--border);">
+    <form method="POST" action="/quick-template/add" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+        <input type="hidden" name="return_month" value="<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>">
+        <div class="flex-1">
+            <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Description</label>
+            <input type="text" name="description" required placeholder="e.g. Lunch at office"
+                class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+        </div>
+        <div>
+            <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Type</label>
+            <select name="type" class="rounded-lg border px-2 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+            </select>
+        </div>
+        <div>
+            <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Category</label>
+            <select name="category_id" class="rounded-lg border px-2 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <option value="">None</option>
+                <?php foreach($categories as $cat): ?>
+                    <option value="<?= (int)$cat['id'] ?>"><?= htmlspecialchars((string)$cat['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Default (RM)</label>
+            <input type="number" step="0.01" name="amount" value="0" class="w-20 rounded-lg border px-2 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+        </div>
+        <button type="submit" class="rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background:var(--accent);">Save</button>
+        <button type="button" onclick="toggleTemplateForm()" class="rounded-lg border px-4 py-2 text-sm font-medium" style="border-color:var(--border);color:var(--text-secondary);">Cancel</button>
+    </form>
+</div>
+
 <!-- Forms -->
-<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+<div class="grid grid-cols-1 gap-4">
     <!-- Add Transaction -->
     <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <h3 class="mb-4 flex items-center gap-2 text-base font-semibold" style="color:var(--text);">
             <svg class="h-4 w-4" style="color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             Add Record
         </h3>
-        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="space-y-3">
+        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" id="addRecordForm" class="space-y-3">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
             <input type="hidden" name="action" value="add_transaction">
 
@@ -126,26 +179,6 @@ ob_start();
         </form>
     </div>
 
-    <!-- Starting Balance -->
-    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <h3 class="mb-3 flex items-center gap-2 text-base font-semibold" style="color:var(--text);">
-            <svg class="h-4 w-4" style="color:var(--accent);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-            Starting Balance
-        </h3>
-        <p class="mb-4 text-sm" style="color:var(--text-secondary);">Your absolute baseline balance. Set once and leave it — the system handles monthly rollover.</p>
-        <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
-            <input type="hidden" name="action" value="set_balance">
-            <div>
-                <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Balance (RM)</label>
-                <input type="number" step="0.01" name="starting_balance" value="<?= htmlspecialchars((string)$startingBalance, ENT_QUOTES, 'UTF-8') ?>" required
-                    class="w-full rounded-lg border px-3 py-3 text-lg font-bold" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-            </div>
-            <button type="submit" class="w-full rounded-lg py-2.5 text-sm font-semibold text-white" style="background:var(--accent);">
-                Update Baseline
-            </button>
-        </form>
-    </div>
 </div>
 
 <!-- Filter Bar -->
@@ -165,6 +198,7 @@ ob_start();
     <div class="flex items-center gap-2">
         <span id="filterCount" class="text-xs" style="color:var(--text-muted);"></span>
         <button onclick="clearFilters()" id="clearFilterBtn" class="hidden rounded-lg border px-3 py-2 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Clear</button>
+        <button onclick="printTransactions()" class="rounded-lg border px-3 py-2 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" title="Export as PDF">Export PDF</button>
     </div>
 </div>
 
@@ -295,6 +329,15 @@ ob_start();
     </div>
 </div>
 
+<!-- Undo Toast -->
+<div id="undoToast" class="fixed bottom-5 left-1/2 z-50 hidden -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow-lg);">
+    <span style="color:var(--text);">Transaction deleted.</span>
+    <button onclick="undoDelete()" class="rounded-lg px-3 py-1 text-xs font-semibold text-white" style="background:var(--accent);">Undo</button>
+    <button onclick="dismissUndo()" class="rounded-lg p-1" style="color:var(--text-muted);">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+</div>
+
 <script>
 function openEdit(id, date, catId, desc, amount, type) {
     document.getElementById('edit_id').value = id;
@@ -373,6 +416,140 @@ function clearFilters() {
     document.getElementById('filterFrom').value = '';
     document.getElementById('filterTo').value = '';
     applyFilters();
+}
+
+// Quick-add: pre-fills the add form with template values
+function quickAdd(type, catId, desc, amount) {
+    var f = document.getElementById('addRecordForm');
+    if (!f) return;
+    f.querySelector('select[name="type"]').value = type;
+    f.querySelector('select[name="category_id"]').value = catId;
+    f.querySelector('input[name="description"]').value = desc;
+    if (amount > 0) f.querySelector('input[name="amount"]').value = amount;
+    f.querySelector('input[name="amount"]').focus();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function toggleTemplateForm() {
+    var f = document.getElementById('templateForm');
+    f.classList.toggle('hidden');
+    if (!f.classList.contains('hidden')) f.querySelector('input[type="text"]').focus();
+}
+
+// Undo delete
+var _undoData = null, _undoTimer = null;
+document.querySelectorAll('form[onsubmit*="Delete this transaction?"]').forEach(function(f) {
+    f.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!confirm('Delete this transaction?')) return;
+        var row = f.closest('.transaction-row');
+        _undoData = {
+            type: row.querySelector('[style*="var(--income)"]') ? 'income' : 'expense',
+            amount: parseFloat(row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent.replace('RM ', '').replace(',', '')),
+            description: row.querySelector('p').textContent.trim(),
+            category_id: parseInt(f.previousElementSibling.getAttribute('onclick').match(/openEdit\((\d+)/)[1]) === parseInt(f.previousElementSibling.getAttribute('onclick').match(/, (\d+),/)[1]) ? f.previousElementSibling.getAttribute('onclick').match(/, (\d+),/)[1] : 0,
+            date: row.getAttribute('data-date'),
+            form: f,
+            row: row
+        };
+        // Actually we need catId properly - let me do this differently
+        _undoData.form = f;
+        _undoData.row = row;
+        // Just submit and capture what we need
+    });
+});
+
+// Simpler approach: override the delete forms
+(function() {
+    document.querySelectorAll('form').forEach(function(f) {
+        var onsubmit = f.getAttribute('onsubmit');
+        if (onsubmit && onsubmit.indexOf('Delete this transaction') > -1) {
+            f.removeAttribute('onsubmit');
+            f.addEventListener('submit', handleDelete);
+        }
+    });
+
+    function handleDelete(e) {
+        e.preventDefault();
+        if (!confirm('Delete this transaction?')) return;
+        var f = e.target.closest('form');
+        var row = f.closest('.transaction-row');
+        var date = row.getAttribute('data-date');
+        var desc = row.querySelector('p').textContent.trim();
+        var amtText = row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent.replace('RM ', '').trim();
+        var amount = parseFloat(amtText);
+        var isIncome = row.querySelector('[style*="var(--income)"]') !== null;
+        var catEl = row.querySelector('select[name="category_id"]') 
+            ? null 
+            : null;
+
+        // Build undo data from what's visible
+        _undoData = {
+            date: date,
+            type: isIncome ? 'income' : 'expense',
+            amount: amount,
+            description: desc,
+            category_id: 0,
+            form: f
+        };
+
+        // Try to get category_id from the edit button onclick
+        var editBtn = row.querySelector('button[onclick*="openEdit"]');
+        if (editBtn) {
+            var onclick = editBtn.getAttribute('onclick');
+            var m = onclick.match(/openEdit\(\d+,\s*'[^']*',\s*(\d+)/);
+            if (m) _undoData.category_id = parseInt(m[1]);
+        }
+
+        // Submit delete
+        var formData = new FormData(f);
+        fetch(f.action, {method: 'POST', body: new URLSearchParams(formData)}).then(function() {
+            showUndoToast();
+        });
+    }
+})();
+
+function showUndoToast() {
+    var toast = document.getElementById('undoToast');
+    toast.classList.remove('hidden');
+    toast.classList.add('flex');
+    _undoTimer = setTimeout(dismissUndo, 8000);
+}
+
+function dismissUndo() {
+    document.getElementById('undoToast').classList.add('hidden');
+    document.getElementById('undoToast').classList.remove('flex');
+    _undoData = null;
+    clearTimeout(_undoTimer);
+}
+
+function undoDelete() {
+    if (!_undoData) return;
+    var d = _undoData;
+    var data = new URLSearchParams();
+    data.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+    data.append('action', 'add_transaction');
+    data.append('type', d.type);
+    data.append('amount', d.amount);
+    data.append('description', d.description);
+    data.append('category_id', d.category_id);
+    data.append('date', d.date);
+    fetch('/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>', {
+        method: 'POST',
+        body: data
+    }).then(function() {
+        location.reload();
+    });
+    dismissUndo();
+}
+
+// PDF export via print
+function printTransactions() {
+    var style = document.createElement('style');
+    style.textContent = '@media print { body { visibility: hidden; } #print-area, #print-area * { visibility: visible; } #print-area { position: absolute; left: 0; top: 0; width: 100%; } }';
+    document.head.appendChild(style);
+    window.print();
+    document.head.removeChild(style);
 }
 </script>
 

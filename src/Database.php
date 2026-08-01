@@ -70,6 +70,20 @@ final class Database
                 date TEXT NOT NULL,
                 FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
             )",
+            "CREATE TABLE IF NOT EXISTS budgets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+            )",
+            "CREATE TABLE IF NOT EXISTS quick_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER,
+                type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
+                description TEXT NOT NULL,
+                amount REAL DEFAULT 0,
+                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+            )",
         ];
 
         foreach ($queries as $query) {

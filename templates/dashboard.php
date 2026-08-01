@@ -33,6 +33,12 @@ $dIncome = delta($incomeThisMonth, $prevIncome);
 $dExpense = delta($expensesThisMonth, $prevExpenses);
 $dNet = delta($currNet, $prevNet);
 
+$budgets = Budget::getAll();
+$expensesByCatTotal = [];
+foreach (Expense::getExpensesByCategory($month, $year) as $cat) {
+    $expensesByCatTotal[$cat['name']] = $cat['total'];
+}
+
 ob_start();
 ?>
 
@@ -111,6 +117,33 @@ ob_start();
             <?php endif; ?>
         </div>
     </div>
+</div>
+
+<!-- Budgets -->
+<div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+    <h3 class="mb-4 text-sm font-semibold" style="color:var(--text);">Category Budgets</h3>
+    <?php if (empty($budgets)): ?>
+        <p class="text-xs" style="color:var(--text-muted);">No budgets set. Add one from the categories page.</p>
+    <?php else: ?>
+        <div class="space-y-3">
+            <?php foreach ($budgets as $b): ?>
+                <?php
+                $spent = $expensesByCatTotal[$b['category_name']] ?? 0;
+                $pct = $b['amount'] > 0 ? min(($spent / $b['amount']) * 100, 100) : 0;
+                $over = $spent > $b['amount'];
+                ?>
+                <div>
+                    <div class="mb-1 flex items-center justify-between text-xs">
+                        <span style="color:var(--text);"><?= htmlspecialchars((string)$b['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <span style="color:<?= $over ? 'var(--expense)' : 'var(--text-secondary)' ?>;">RM <?= number_format($spent, 0) ?> / RM <?= number_format($b['amount'], 0) ?></span>
+                    </div>
+                    <div class="h-2 overflow-hidden rounded-full" style="background:var(--bg-hover);">
+                        <div class="h-full rounded-full transition-all" style="width:<?= $pct ?>%;background:<?= $over ? 'var(--expense)' : 'var(--accent)' ?>;"></div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </div>
 
 <!-- Chart -->

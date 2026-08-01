@@ -68,8 +68,11 @@ if ($route === 'settings/ledger' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once __DIR__ . '/../src/Settings.php';
     if (isset($_POST['tracking_start_month'])) {
         Settings::set('tracking_start_month', $_POST['tracking_start_month']);
-        header('Location: /settings?msg=settings_success');
     }
+    if (isset($_POST['starting_balance'])) {
+        Settings::set('starting_bank_balance', (string) round((float) $_POST['starting_balance'], 2));
+    }
+    header('Location: /settings?msg=settings_success');
     exit;
 }
 
@@ -201,6 +204,45 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+
+if ($route === 'quick-template/add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $type = $_POST['type'] ?? 'expense';
+    $desc = trim($_POST['description'] ?? '');
+    $catId = (int) ($_POST['category_id'] ?? 0);
+    $amount = (float) ($_POST['amount'] ?? 0);
+    if ($desc !== '' && in_array($type, ['income', 'expense'], true)) {
+        QuickTemplate::create($type, $desc, $catId > 0 ? $catId : null, $amount);
+    }
+    header('Location: /transactions?month=' . urlencode($_POST['return_month'] ?? date('Y-m')));
+    exit;
+}
+
+if ($route === 'quick-template/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    QuickTemplate::delete((int) ($_POST['id'] ?? 0));
+    header('Location: /transactions?month=' . urlencode($_POST['return_month'] ?? date('Y-m')));
+    exit;
+}
+
+if ($route === 'budget/set' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $catId = (int) ($_POST['category_id'] ?? 0);
+    $amount = (float) ($_POST['amount'] ?? 0);
+    if ($catId > 0 && $amount > 0) {
+        Budget::set($catId, $amount);
+    }
+    header('Location: /dashboard');
+    exit;
+}
+
+if ($route === 'budget/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    Budget::delete((int) ($_POST['category_id'] ?? 0));
+    header('Location: /dashboard');
+    exit;
+}
+
 // Map routes to templates
 $routes = [
     '' => 'dashboard.php',
@@ -209,6 +251,7 @@ $routes = [
     'login' => 'login.php',
     'recurring' => 'recurring.php',
     'categories' => 'categories.php',
+    'budgets' => 'budgets.php',
     'settings' => 'settings.php',
 ];
 
