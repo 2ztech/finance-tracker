@@ -148,6 +148,26 @@ ob_start();
     </div>
 </div>
 
+<!-- Filter Bar -->
+<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-1 items-center gap-2">
+        <div class="relative flex-1 sm:max-w-xs">
+            <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style="color:var(--text-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="filterSearch" placeholder="Search transactions..." oninput="applyFilters()"
+                class="w-full rounded-lg border py-2 pl-10 pr-3 text-sm outline-none" style="background:var(--bg-alt);border-color:var(--border);color:var(--text);">
+        </div>
+        <input type="date" id="filterFrom" onchange="applyFilters()"
+            class="rounded-lg border px-3 py-2 text-sm outline-none" style="background:var(--bg-alt);border-color:var(--border);color:var(--text);" title="From date">
+        <span style="color:var(--text-muted);">&mdash;</span>
+        <input type="date" id="filterTo" onchange="applyFilters()"
+            class="rounded-lg border px-3 py-2 text-sm outline-none" style="background:var(--bg-alt);border-color:var(--border);color:var(--text);" title="To date">
+    </div>
+    <div class="flex items-center gap-2">
+        <span id="filterCount" class="text-xs" style="color:var(--text-muted);"></span>
+        <button onclick="clearFilters()" id="clearFilterBtn" class="hidden rounded-lg border px-3 py-2 text-xs font-medium transition-colors" style="border-color:var(--border);color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Clear</button>
+    </div>
+</div>
+
 <!-- Transactions List -->
 <?php if (empty($transactions)): ?>
     <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
@@ -164,7 +184,7 @@ ob_start();
                 $dayInc = array_sum(array_map(fn($t) => $t['type'] === 'income' ? $t['amount'] : 0, $dayTxs));
                 $dayExp = array_sum(array_map(fn($t) => $t['type'] === 'expense' ? $t['amount'] : 0, $dayTxs));
             ?>
-            <div class="overflow-hidden rounded-xl border" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <div class="overflow-hidden rounded-xl border transaction-group" data-date="<?= htmlspecialchars((string)$date, ENT_QUOTES, 'UTF-8') ?>" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
                 <div class="flex items-center justify-between border-b px-4 py-2.5" style="border-color:var(--border-light);">
                     <div class="flex items-center gap-3">
                         <span class="text-xl font-bold" style="color:var(--text);"><?= date('d', strtotime($date)) ?></span>
@@ -177,7 +197,7 @@ ob_start();
                     </div>
                 </div>
                 <?php foreach ($dayTxs as $t): ?>
-                    <div class="flex items-center justify-between border-b px-4 py-3 last:border-b-0 transition-colors" style="border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
+                    <div class="transaction-row flex items-center justify-between border-b px-4 py-3 last:border-b-0 transition-colors" data-search="<?= htmlspecialchars(strtolower((string)($t['category_name'] ?? '')) . ' ' . strtolower((string)$t['description']), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string)$date, ENT_QUOTES, 'UTF-8') ?>" style="border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2">
                                 <?php if ($t['category_name']): ?>
@@ -295,6 +315,65 @@ function closeEdit() {
 document.getElementById('editModal').addEventListener('click', function(e) {
     if (e.target === this) closeEdit();
 });
+</script>
+
+<script>
+function applyFilters() {
+    var query = (document.getElementById('filterSearch').value || '').toLowerCase();
+    var from = document.getElementById('filterFrom').value;
+    var to = document.getElementById('filterTo').value;
+    var visible = 0;
+    var total = 0;
+
+    document.querySelectorAll('.transaction-group').forEach(function(group) {
+        var groupDate = group.getAttribute('data-date');
+        var groupVisible = false;
+        var rows = group.querySelectorAll('.transaction-row');
+        total += rows.length;
+
+        rows.forEach(function(row) {
+            var search = row.getAttribute('data-search') || '';
+            var rowDate = row.getAttribute('data-date');
+            var match = true;
+
+            if (query && search.indexOf(query) === -1) match = false;
+            if (from && rowDate < from) match = false;
+            if (to && rowDate > to) match = false;
+
+            if (match) {
+                row.style.display = '';
+                groupVisible = true;
+                visible++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        group.style.display = groupVisible ? '' : 'none';
+    });
+
+    var countEl = document.getElementById('filterCount');
+    var clearBtn = document.getElementById('clearFilterBtn');
+    var hasFilter = query || from || to;
+
+    if (hasFilter && visible !== total) {
+        countEl.textContent = visible + ' / ' + total + ' shown';
+        clearBtn.classList.remove('hidden');
+    } else if (hasFilter) {
+        countEl.textContent = '';
+        clearBtn.classList.remove('hidden');
+    } else {
+        countEl.textContent = '';
+        clearBtn.classList.add('hidden');
+    }
+}
+
+function clearFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterFrom').value = '';
+    document.getElementById('filterTo').value = '';
+    applyFilters();
+}
 </script>
 
 <?php

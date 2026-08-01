@@ -16,6 +16,23 @@ $onHandBalance = Expense::getOnHandBalance($month, $year);
 $projectedBalance = Expense::getEOMProjection($month, $year);
 $expensesByCategory = Expense::getExpensesByCategory($month, $year);
 
+$prevYear = date('Y', strtotime($prevMonth . '-01'));
+$prevMonthNum = date('m', strtotime($prevMonth . '-01'));
+$prevIncome = round(Expense::getTotalIncome($prevMonthNum, $prevYear), 2);
+$prevExpenses = round(Expense::getTotalExpense($prevMonthNum, $prevYear), 2);
+$currNet = $incomeThisMonth - $expensesThisMonth;
+$prevNet = $prevIncome - $prevExpenses;
+
+function delta(float $curr, float $prev): array {
+    if ($prev == 0) return ['diff' => $curr, 'pct' => null, 'sign' => $curr >= 0 ? 'up' : 'down'];
+    $diff = $curr - $prev;
+    $pct = round(($diff / abs($prev)) * 100, 1);
+    return ['diff' => $diff, 'pct' => $pct, 'sign' => $diff >= 0 ? 'up' : 'down'];
+}
+$dIncome = delta($incomeThisMonth, $prevIncome);
+$dExpense = delta($expensesThisMonth, $prevExpenses);
+$dNet = delta($currNet, $prevNet);
+
 ob_start();
 ?>
 
@@ -57,6 +74,42 @@ ob_start();
         <p class="text-xs font-medium" style="color:var(--text-muted);">Expenses</p>
         <p class="mt-2 text-2xl font-bold" style="color:var(--expense);">RM <?= number_format($expensesThisMonth, 2) ?></p>
         <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)date('M', mktime(0,0,0,(int)$month,1)), ENT_QUOTES, 'UTF-8') ?></p>
+    </div>
+</div>
+
+<!-- Monthly Comparison -->
+<div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+    <h3 class="mb-4 text-sm font-semibold" style="color:var(--text);">
+        vs <?= htmlspecialchars((string)date('F Y', strtotime($prevMonth . '-01')), ENT_QUOTES, 'UTF-8') ?>
+    </h3>
+    <div class="grid grid-cols-3 gap-3 text-center">
+        <div>
+            <p class="text-xs" style="color:var(--text-muted);">Income</p>
+            <p class="mt-1 text-lg font-bold" style="color:<?= $dIncome['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;">
+                <?= $dIncome['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dIncome['diff'], 2) ?>
+            </p>
+            <?php if ($dIncome['pct'] !== null): ?>
+                <p class="text-xs" style="color:<?= $dIncome['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;"><?= $dIncome['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dIncome['pct'] ?>%</p>
+            <?php endif; ?>
+        </div>
+        <div>
+            <p class="text-xs" style="color:var(--text-muted);">Expenses</p>
+            <p class="mt-1 text-lg font-bold" style="color:<?= $dExpense['sign'] === 'up' ? 'var(--expense)' : 'var(--income)' ?>;">
+                <?= $dExpense['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dExpense['diff'], 2) ?>
+            </p>
+            <?php if ($dExpense['pct'] !== null): ?>
+                <p class="text-xs" style="color:<?= $dExpense['sign'] === 'up' ? 'var(--expense)' : 'var(--income)' ?>;"><?= $dExpense['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dExpense['pct'] ?>%</p>
+            <?php endif; ?>
+        </div>
+        <div>
+            <p class="text-xs" style="color:var(--text-muted);">Net</p>
+            <p class="mt-1 text-lg font-bold" style="color:<?= $dNet['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;">
+                <?= $dNet['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dNet['diff'], 2) ?>
+            </p>
+            <?php if ($dNet['pct'] !== null): ?>
+                <p class="text-xs" style="color:<?= $dNet['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;"><?= $dNet['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dNet['pct'] ?>%</p>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
