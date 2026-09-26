@@ -9,7 +9,7 @@ final class Budget
     {
         $db = Database::getConnection();
         $stmt = $db->query("
-            SELECT b.category_id, c.name AS category_name, c.color_hex, b.amount, c.type
+            SELECT b.category_id, c.name AS category_name, c.color_hex, c.icon_key, c.icon_data, c.icon_mime, b.amount, c.type
             FROM budgets b
             JOIN categories c ON b.category_id = c.id
             WHERE c.type = 'expense'

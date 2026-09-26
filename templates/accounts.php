@@ -12,6 +12,7 @@ $toasts = [
     'deleted'       => ['Account deleted.', 'success'],
     'blocked'       => ['Cannot delete: account still has transactions.', 'danger'],
     'name_required' => ['Account name is required.', 'danger'],
+    'icon_upload_invalid' => ['Icon rejected. Use a square PNG, JPEG, WebP, or ICO within the displayed size and file limits.', 'danger'],
     'reassigned'    => ['Transactions reassigned.', 'success'],
 ];
 
@@ -40,6 +41,7 @@ ob_start();
         $bal = Account::balance((int) $a['id']);
         $isActive = Account::activeId() === (int) $a['id'];
         $kindLabel = ucfirst((string) $a['kind']);
+        $accountIcon = AccountIcon::for((string) $a['name'], (string) $a['kind'], (string) ($a['color_hex'] ?? ''));
         if ($a['kind'] === 'paylater') {
             $kindLabel .= ' · ' . ($a['bnpl_mode'] === 'per_purchase' ? 'per-purchase' : 'cycle');
         }
@@ -47,7 +49,8 @@ ob_start();
         ?>
         <div class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between" style="background:var(--bg-alt);border-color:<?= $isActive ? 'var(--accent)' : 'var(--border)' ?>;box-shadow:var(--shadow);">
             <div class="flex items-center gap-3">
-                <span class="h-9 w-9 shrink-0 rounded-lg" style="background:<?= htmlspecialchars((string) $a['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></span>
+                <?php if (!empty($a['icon_data'])): ?><img class="h-10 w-10 shrink-0 rounded-xl object-contain" src="data:<?= htmlspecialchars((string)($a['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$a['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt="">
+                <?php else: ?><span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base font-bold" style="background:<?= $accountIcon['background'] ?>;color:<?= $accountIcon['foreground'] ?>;"><?= htmlspecialchars($accountIcon['mark'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?>
                 <div>
                     <p class="text-base font-semibold" style="color:var(--text);">
                         <?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?>
@@ -74,7 +77,7 @@ ob_start();
                     <button type="button" onclick='editAccount(<?= json_encode($a, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' class="rounded p-1.5" style="color:var(--text-muted);" title="Edit">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                     </button>
-                    <form method="POST" action="/accounts/delete" onsubmit="return confirm('Delete this account?');">
+                    <form method="POST" action="/accounts/delete" data-confirm="Delete this account?" data-confirm-label="Delete" data-confirm-danger="true">
                         <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                         <input type="hidden" name="id" value="<?= (int) $a['id'] ?>">
                         <button type="submit" class="rounded p-1.5" style="color:var(--text-muted);" title="Delete">
@@ -91,7 +94,7 @@ ob_start();
 <div class="mt-8 rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
     <h3 class="mb-1 text-base font-semibold" style="color:var(--text);">Move Transactions Between Accounts</h3>
     <p class="mb-4 text-sm" style="color:var(--text-secondary);">Bulk-move transactions (and commitments) from one account to another. Use this to reorganise after adding a new account.</p>
-    <form method="POST" action="/accounts/reassign" onsubmit="return confirm('Move transactions? This cannot be undone automatically.');" class="grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <form method="POST" action="/accounts/reassign" data-confirm="Move transactions? This cannot be undone automatically." data-confirm-label="Move transactions" class="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
         <div>
             <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">From</label>
@@ -127,7 +130,7 @@ ob_start();
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <form method="POST" action="/accounts/save" class="space-y-3">
+        <form method="POST" action="/accounts/save" enctype="multipart/form-data" class="space-y-3">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
             <input type="hidden" name="id" id="acc_id" value="">
             <div class="grid grid-cols-2 gap-3">
@@ -147,6 +150,16 @@ ob_start();
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Color</label>
                 <input type="color" name="color_hex" id="acc_color" value="#4f6ef7" class="h-9 w-full cursor-pointer rounded border-0 bg-transparent p-0">
+            </div>
+            <div class="rounded-xl border p-3" style="border-color:var(--border);background:var(--bg-hover);">
+                <div class="flex items-center gap-3">
+                    <img id="acc_icon_preview" class="hidden h-10 w-10 rounded-lg object-contain" alt="Account icon preview">
+                    <p class="text-xs" style="color:var(--text-secondary);">Optional account icon. PNG, JPEG, WebP, or ICO; square 32–512 px (ICO frames 16–256 px, including one 32 px+); maximum 512 KiB. It scales to fit.</p>
+                </div>
+                <div class="mt-2 flex items-center gap-2"><button type="button" id="acc_icon_choose" aria-controls="acc_icon_file" class="rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-80" style="border-color:var(--border);background:var(--bg-alt);color:var(--text);">Choose image</button><span id="acc_icon_filename" class="truncate text-xs" style="color:var(--text-muted);">No file selected</span></div>
+                <input type="file" name="icon_file" id="acc_icon_file" accept="image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico" class="sr-only" aria-label="Upload account icon">
+                <p id="acc_icon_error" class="mt-1 hidden text-xs" style="color:var(--danger);" role="alert"></p>
+                <label id="acc_clear_icon_wrap" class="mt-2 hidden items-center gap-2 text-xs" style="color:var(--text-secondary);"><input type="checkbox" name="clear_icon" id="acc_clear_icon"> Remove uploaded icon</label>
             </div>
 
             <!-- Opening balance (all kinds) -->
@@ -224,6 +237,13 @@ function openAccountForm() {
     document.getElementById('acc_name').value = '';
     document.getElementById('acc_kind').value = 'savings';
     document.getElementById('acc_color').value = '#4f6ef7';
+    document.getElementById('acc_icon_file').value = '';
+    document.getElementById('acc_icon_filename').textContent = 'No file selected';
+    document.getElementById('acc_icon_error').classList.add('hidden');
+    document.getElementById('acc_icon_preview').classList.add('hidden');
+    document.getElementById('acc_icon_preview').removeAttribute('src');
+    document.getElementById('acc_clear_icon').checked = false;
+    document.getElementById('acc_clear_icon_wrap').classList.add('hidden');
     document.getElementById('acc_opening').value = '0';
     document.getElementById('acc_start').value = '';
     document.getElementById('acc_stmt').value = '';
@@ -243,6 +263,18 @@ function editAccount(a) {
     document.getElementById('acc_name').value = a.name;
     document.getElementById('acc_kind').value = a.kind;
     document.getElementById('acc_color').value = a.color_hex || '#4f6ef7';
+    document.getElementById('acc_icon_file').value = '';
+    document.getElementById('acc_icon_filename').textContent = 'No file selected';
+    document.getElementById('acc_icon_error').classList.add('hidden');
+    document.getElementById('acc_clear_icon').checked = false;
+    document.getElementById('acc_clear_icon_wrap').classList.toggle('hidden', !a.icon_data);
+    if (a.icon_data) {
+        document.getElementById('acc_icon_preview').src = 'data:' + (a.icon_mime || 'image/png') + ';base64,' + a.icon_data;
+        document.getElementById('acc_icon_preview').classList.remove('hidden');
+    } else {
+        document.getElementById('acc_icon_preview').classList.add('hidden');
+        document.getElementById('acc_icon_preview').removeAttribute('src');
+    }
     document.getElementById('acc_opening').value = a.opening_balance;
     document.getElementById('acc_start').value = a.start_month || '';
     document.getElementById('acc_stmt').value = a.statement_day || '';
@@ -255,6 +287,58 @@ function editAccount(a) {
     toggleAccountFields();
     showModal();
 }
+
+document.getElementById('acc_icon_choose').addEventListener('click', function() { document.getElementById('acc_icon_file').click(); });
+document.getElementById('acc_icon_file').addEventListener('change', function() {
+    var file = this.files[0];
+    var error = document.getElementById('acc_icon_error');
+    var filename = document.getElementById('acc_icon_filename');
+    error.classList.add('hidden');
+    error.textContent = '';
+    if (!file) { filename.textContent = 'No file selected'; return; }
+    filename.textContent = file.name;
+    var input = this;
+    function reject(message) {
+        error.textContent = message;
+        error.classList.remove('hidden');
+        input.value = '';
+        filename.textContent = 'No file selected';
+    }
+    var ico = file.type === 'image/x-icon' || file.type === 'image/vnd.microsoft.icon' || /\.ico$/i.test(file.name);
+    var accepted = ['image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'].includes(file.type) || ico;
+    if (!accepted || file.size > 524288) {
+        reject('Choose a PNG, JPEG, WebP, or ICO file no larger than 512 KiB.');
+        return;
+    }
+    var img = new Image();
+    img.onload = function() {
+        var max = ico ? 256 : 512;
+        if (img.naturalWidth !== img.naturalHeight || img.naturalWidth < 32 || img.naturalWidth > max) {
+            reject(ico ? 'ICO frames must be square and 32–256 pixels.' : 'The icon must be square and 32–512 pixels.');
+            URL.revokeObjectURL(img.src);
+            return;
+        }
+        var preview = document.getElementById('acc_icon_preview');
+        var previewUrl = img.src;
+        preview.onload = function() { URL.revokeObjectURL(previewUrl); };
+        preview.onerror = function() { URL.revokeObjectURL(previewUrl); };
+        preview.src = previewUrl;
+        preview.classList.remove('hidden');
+        document.getElementById('acc_clear_icon').checked = false;
+    };
+    img.onerror = function() { reject('This image could not be opened. Choose a valid icon file.'); URL.revokeObjectURL(img.src); };
+    img.src = URL.createObjectURL(file);
+});
+document.getElementById('acc_clear_icon').addEventListener('change', function() {
+    if (this.checked) {
+        var preview = document.getElementById('acc_icon_preview');
+        preview.classList.add('hidden');
+        preview.removeAttribute('src');
+        document.getElementById('acc_icon_file').value = '';
+        document.getElementById('acc_icon_filename').textContent = 'No file selected';
+        document.getElementById('acc_icon_error').classList.add('hidden');
+    }
+});
 
 function showModal() {
     var m = document.getElementById('accountModal');

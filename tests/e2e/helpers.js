@@ -77,4 +77,11 @@ async function accountBalance(page) {
   return text;
 }
 
-module.exports = { login, logout, createAccount, switchAccount, addTransaction };
+// The app uses a custom confirmation dialog (#appDialog) for destructive forms
+// marked with data-confirm. Accept it after triggering the action.
+async function confirmDialog(page) {
+  await expect(page.locator('#appDialog')).toBeVisible();
+  await page.click('#appDialogAccept');
+}
+
+module.exports = { login, logout, createAccount, switchAccount, addTransaction, accountBalance, confirmDialog };

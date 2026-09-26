@@ -239,7 +239,7 @@ ob_start();
                 <span class="mr-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold text-white" style="background:var(--accent);">+</span>
                 <?= htmlspecialchars((string)$qt['description'], ENT_QUOTES, 'UTF-8') ?><?php if ($qt['amount'] > 0): ?> · RM<?= number_format($qt['amount'], 0) ?><?php endif; ?>
             </button>
-            <form method="POST" action="/quick-template/delete" class="inline-flex" onsubmit="return confirm('Remove template?');">
+            <form method="POST" action="/quick-template/delete" class="inline-flex" data-confirm="Remove template?" data-confirm-label="Remove" data-confirm-danger="true">
                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                 <input type="hidden" name="id" value="<?= (int)$qt['id'] ?>">
                 <input type="hidden" name="return_month" value="<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>">
@@ -407,7 +407,9 @@ ob_start();
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2">
                                 <?php if ($t['category_name']): ?>
-                                    <span class="h-2 w-2 shrink-0 rounded-full" style="background:<?= htmlspecialchars((string)$t['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></span>
+                                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style="color:<?= htmlspecialchars((string)$t['color_hex'], ENT_QUOTES, 'UTF-8') ?>;background:color-mix(in srgb, <?= htmlspecialchars((string)$t['color_hex'], ENT_QUOTES, 'UTF-8') ?> 14%, white);">
+                                        <?php if (!empty($t['icon_data'])): ?><img class="h-4 w-4 rounded object-contain" src="data:<?= htmlspecialchars((string)($t['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$t['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><?= IconCatalog::svg((string)($t['icon_key'] ?? 'other'), 'h-4 w-4') ?><?php endif; ?>
+                                    </span>
                                     <span class="text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)$t['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php else: ?>
                                     <span class="text-xs" style="color:var(--text-muted);">Uncategorized</span>
@@ -421,7 +423,7 @@ ob_start();
                                 <button type="button" onclick="openEdit(<?= $t['id'] ?>, '<?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?>', <?= (int)($t['category_id'] ?? 0) ?>, '<?= htmlspecialchars(addslashes((string)$t['description']), ENT_QUOTES, 'UTF-8') ?>', <?= $t['amount'] ?>, '<?= $t['type'] ?>', <?= (int)($t['account_id'] ?? 0) ?>)" class="rounded p-1" style="color:var(--text-muted);">
                                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                                 </button>
-                                <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" onsubmit="return confirm('Delete this transaction?');" class="inline">
+                                <form method="POST" action="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="inline" data-confirm="Delete this transaction?" data-confirm-label="Delete" data-confirm-danger="true">
                                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                     <input type="hidden" name="action" value="delete_transaction">
                                     <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
@@ -443,7 +445,7 @@ ob_start();
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-bold" style="color:<?= $out ? 'var(--expense)' : 'var(--income)' ?>;"><?= $out ? '-' : '+' ?>RM <?= number_format($tr['amount'], 2) ?></span>
-                            <form method="POST" action="/transfers/delete" onsubmit="return confirm('Delete this transfer?');">
+                            <form method="POST" action="/transfers/delete" data-confirm="Delete this transfer?" data-confirm-label="Delete" data-confirm-danger="true">
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="id" value="<?= (int)$tr['id'] ?>">
                                 <input type="hidden" name="return_month" value="<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>">
@@ -691,11 +693,9 @@ function toggleTemplateForm(){var f=document.getElementById('templateForm');f.cl
     var toast=document.getElementById('undoToast'); var clearUndoTimer=null;
     if(sessionStorage.getItem('undoData')) showUndoToast();
     document.querySelectorAll('form').forEach(function(f){
-        var onsubmit=f.getAttribute('onsubmit');
-        if(!onsubmit||onsubmit.indexOf('Delete this transaction')<0) return;
-        f.removeAttribute('onsubmit');
+        if(f.dataset.confirm !== 'Delete this transaction?') return;
         f.addEventListener('submit',function(e){
-            if(!confirm('Delete this transaction?')){e.preventDefault();return;}
+            if(f.dataset.confirmed !== 'true') return;
             var row=f.closest('.transaction-row'); var date=row.getAttribute('data-date');
             var desc=row.querySelector('p').textContent.trim();
             var amtText=row.querySelector('[style*="var(--income)"], [style*="var(--expense)"]').textContent;

@@ -17,7 +17,7 @@ final class Expense
         $endDate = date("Y-m-t", strtotime($startDate));
 
         $sql = "
-            SELECT t.*, c.name AS category_name, c.color_hex, a.name AS account_name
+            SELECT t.*, c.name AS category_name, c.color_hex, c.icon_key, c.icon_data, c.icon_mime, a.name AS account_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN accounts a ON t.account_id = a.id
@@ -85,7 +85,7 @@ final class Expense
         $endDate = date("Y-m-t", strtotime($startDate));
 
         $sql = "
-            SELECT c.id AS category_id, c.name, c.color_hex, ROUND(SUM(t.amount), 2) AS total
+            SELECT c.id AS category_id, c.name, c.color_hex, c.icon_key, c.icon_data, c.icon_mime, ROUND(SUM(t.amount), 2) AS total
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
             WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?";

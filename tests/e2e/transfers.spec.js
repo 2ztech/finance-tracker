@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount } = require('./helpers');
+const { login, createAccount, switchAccount, confirmDialog } = require('./helpers');
 
 test.describe('Transfers', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,15 +34,13 @@ test.describe('Transfers', () => {
     await expect(await dashboardBalance(page)).toContain('RM 300.00');
 
     // Delete the transfer from A's ledger.
-    page.on('dialog', (d) => d.accept());
     await switchAccount(page, 'TEST_TR_A');
     await page.goto('/transactions');
     const transferRow = page.locator('.transaction-row', { hasText: 'e2e-move' });
     await expect(transferRow).toBeVisible();
-    await Promise.all([
-      page.waitForLoadState('networkidle'),
-      transferRow.locator('form[action="/transfers/delete"] button[type="submit"]').click(),
-    ]);
+    await transferRow.locator('form[action="/transfers/delete"] button[type="submit"]').click();
+    await confirmDialog(page);
+    await page.waitForLoadState('networkidle');
 
     await expect(await dashboardBalance(page)).toContain('RM 1,000.00');
     await switchAccount(page, 'TEST_TR_B');

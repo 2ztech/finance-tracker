@@ -95,7 +95,7 @@ ob_start();
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-bold" style="color:var(--expense);">RM <?= number_format($remaining, 2) ?> left</span>
                             <?php if ($remaining > 0): ?>
-                            <form method="POST" action="/plans/settle" onsubmit="return confirm('Settle the entire remaining balance now?');" class="inline">
+                            <form method="POST" action="/plans/settle" data-confirm="Settle the entire remaining balance now?" data-confirm-label="Settle" class="inline">
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="plan_id" value="<?= (int)$p['id'] ?>">
                                 <input type="hidden" name="from_account_id" value="<?= (int)(Account::defaultId() ?? 0) ?>">

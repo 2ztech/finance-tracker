@@ -123,7 +123,7 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
             <p class="text-sm font-medium" style="color:var(--text);">Restore Database</p>
         <p class="text-xs" style="color:var(--danger);">This replaces all current data. Download a backup first if you may need to undo this.</p>
         </div>
-        <form method="POST" action="/settings/restore" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center" onsubmit="return confirm('Restore this database and replace all current Expenzz data? This cannot be undone.');">
+        <form method="POST" action="/settings/restore" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center" data-confirm="Restore this database and replace all current Expenzz data? This cannot be undone." data-confirm-title="Restore database" data-confirm-label="Restore" data-confirm-danger="true">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
             <input type="file" name="db_file" accept=".db,.sqlite" required
                 class="text-sm file:mr-3 file:rounded-lg file:border-0 file:px-3 file:py-2 file:text-sm file:font-semibold file:cursor-pointer" style="color:var(--text-secondary);">
@@ -153,7 +153,7 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
 <script>
 function validatePw(f) {
     if (f.new_password.value !== f.confirm_new_password.value) {
-        alert('New passwords do not match.');
+        window.appNotice('New passwords do not match.', 'Password mismatch');
         return false;
     }
     return true;

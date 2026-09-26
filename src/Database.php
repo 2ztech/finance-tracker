@@ -74,7 +74,10 @@ final class Database
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 type TEXT NOT NULL CHECK(type IN ('income', 'expense')),
-                color_hex TEXT NOT NULL
+                color_hex TEXT NOT NULL,
+                icon_key TEXT NOT NULL DEFAULT 'other',
+                icon_data TEXT,
+                icon_mime TEXT NOT NULL DEFAULT 'image/png'
             )",
             "CREATE TABLE IF NOT EXISTS commitments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,6 +129,8 @@ final class Database
                 credit_limit REAL,
                 opening_balance REAL NOT NULL DEFAULT 0,
                 start_month TEXT,
+                icon_data TEXT,
+                icon_mime TEXT NOT NULL DEFAULT 'image/png',
                 archived INTEGER NOT NULL DEFAULT 0,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
@@ -193,6 +198,11 @@ final class Database
         }
 
         $alterations = [
+            "ALTER TABLE categories ADD COLUMN icon_key TEXT NOT NULL DEFAULT 'other'",
+            "ALTER TABLE categories ADD COLUMN icon_data TEXT",
+            "ALTER TABLE categories ADD COLUMN icon_mime TEXT NOT NULL DEFAULT 'image/png'",
+            "ALTER TABLE accounts ADD COLUMN icon_data TEXT",
+            "ALTER TABLE accounts ADD COLUMN icon_mime TEXT NOT NULL DEFAULT 'image/png'",
             "ALTER TABLE commitments ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL",
             "ALTER TABLE commitments ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
             "ALTER TABLE commitments ADD COLUMN start_date TEXT",
@@ -212,6 +222,17 @@ final class Database
             }
         }
 
+        $seededIconDefaults = $db->query("SELECT value FROM settings WHERE key = 'category_icon_defaults_seeded'")->fetchColumn();
+        if ($seededIconDefaults === false) {
+            $rows = $db->query("SELECT id, name FROM categories WHERE icon_key = 'other' AND icon_data IS NULL")->fetchAll(PDO::FETCH_ASSOC);
+            $updateIcon = $db->prepare("UPDATE categories SET icon_key = ? WHERE id = ?");
+            foreach ($rows as $row) {
+                $iconKey = IconCatalog::defaultForName((string)$row['name']);
+                if ($iconKey !== 'other') $updateIcon->execute([$iconKey, (int)$row['id']]);
+            }
+            $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('category_icon_defaults_seeded', '1')")->execute();
+        }
+
         // Indexes that depend on columns added above must run after the ALTERs.
         foreach ([
             "CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)",
@@ -227,22 +248,22 @@ final class Database
         $stmt = $db->query("SELECT COUNT(*) FROM categories");
         if ($stmt->fetchColumn() == 0) {
             $defaultCategories = [
-                ['name' => 'Food & Dining',          'type' => 'expense', 'color_hex' => '#ef4444'],
-                ['name' => 'Fuel & Transport',       'type' => 'expense', 'color_hex' => '#f97316'],
-                ['name' => 'Utilities',              'type' => 'expense', 'color_hex' => '#eab308'],
-                ['name' => 'Groceries',              'type' => 'expense', 'color_hex' => '#84cc16'],
-                ['name' => 'Entertainment',          'type' => 'expense', 'color_hex' => '#06b6d4'],
-                ['name' => 'Healthcare',             'type' => 'expense', 'color_hex' => '#ec4899'],
-                ['name' => 'Motorcycle Maintenance', 'type' => 'expense', 'color_hex' => '#64748b'],
-                ['name' => 'Subscriptions',          'type' => 'expense', 'color_hex' => '#8b5cf6'],
-                ['name' => 'Salary',                 'type' => 'income',  'color_hex' => '#10b981'],
-                ['name' => 'Side Hustle',            'type' => 'income',  'color_hex' => '#3b82f6'],
-                ['name' => 'Miscellaneous',          'type' => 'income',  'color_hex' => '#14b8a6'],
+                ['name' => 'Food & Dining',          'type' => 'expense', 'color_hex' => '#ef4444', 'icon_key' => 'food'],
+                ['name' => 'Fuel & Transport',       'type' => 'expense', 'color_hex' => '#f97316', 'icon_key' => 'transport'],
+                ['name' => 'Utilities',              'type' => 'expense', 'color_hex' => '#eab308', 'icon_key' => 'utilities'],
+                ['name' => 'Groceries',              'type' => 'expense', 'color_hex' => '#84cc16', 'icon_key' => 'groceries'],
+                ['name' => 'Entertainment',          'type' => 'expense', 'color_hex' => '#06b6d4', 'icon_key' => 'entertainment'],
+                ['name' => 'Healthcare',             'type' => 'expense', 'color_hex' => '#ec4899', 'icon_key' => 'health'],
+                ['name' => 'Motorcycle Maintenance', 'type' => 'expense', 'color_hex' => '#64748b', 'icon_key' => 'transport'],
+                ['name' => 'Subscriptions',          'type' => 'expense', 'color_hex' => '#8b5cf6', 'icon_key' => 'subscription'],
+                ['name' => 'Salary',                 'type' => 'income',  'color_hex' => '#10b981', 'icon_key' => 'salary'],
+                ['name' => 'Side Hustle',            'type' => 'income',  'color_hex' => '#3b82f6', 'icon_key' => 'work'],
+                ['name' => 'Miscellaneous',          'type' => 'income',  'color_hex' => '#14b8a6', 'icon_key' => 'other'],
             ];
 
-            $insertCat = $db->prepare("INSERT INTO categories (name, type, color_hex) VALUES (?, ?, ?)");
+            $insertCat = $db->prepare("INSERT INTO categories (name, type, color_hex, icon_key) VALUES (?, ?, ?, ?)");
             foreach ($defaultCategories as $cat) {
-                $insertCat->execute([$cat['name'], $cat['type'], $cat['color_hex']]);
+                $insertCat->execute([$cat['name'], $cat['type'], $cat['color_hex'], $cat['icon_key']]);
             }
         }
 

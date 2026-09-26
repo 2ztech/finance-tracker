@@ -20,7 +20,6 @@ $globalNav = [
     'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
     'categories' => ['label' => 'Categories', 'icon' => 'tag'],
     'accounts'   => ['label' => 'Accounts',   'icon' => 'wallet'],
-    'settings'   => ['label' => 'Settings',   'icon' => 'cog'],
 ];
 
 $returnPath = $_SERVER['REQUEST_URI'] ?? '/dashboard';
@@ -36,6 +35,8 @@ function navIcon(string $icon): string
         'chart' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
         'wallet' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>',
         'cog' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+        'import' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"/></svg>',
+        'database' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3" stroke-width="1.6"/><path stroke-linecap="round" stroke-width="1.6" d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
         default => '',
     };
 }
@@ -57,7 +58,7 @@ function navIcon(string $icon): string
 
     <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 backdrop-blur-sm lg:hidden" onclick="toggleSidebar()"></div>
 
-    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-60 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-56 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
         <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color:var(--sidebar-border);">
             <div class="flex items-center gap-2.5">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style="background:var(--accent);">E</div>
@@ -107,12 +108,16 @@ function navIcon(string $icon): string
             <div class="my-2 border-t" style="border-color:var(--border);"></div>
             <?php $renderNav($globalNav); ?>
             <div class="my-2 border-t" style="border-color:var(--border);"></div>
-            <a href="/settings#data-management" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);">
-                <span class="flex h-5 w-5 items-center justify-center"><?= navIcon('document') ?></span>Import / Export
+            <p class="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted);">Manage</p>
+            <?php foreach ([
+                ['href' => '/settings#data-management', 'label' => 'Import / Export', 'icon' => 'import'],
+                ['href' => '/settings#restore-database', 'label' => 'Backup & Restore', 'icon' => 'database'],
+                ['href' => '/settings', 'label' => 'Settings', 'icon' => 'cog'],
+            ] as $item): ?>
+            <a href="<?= $item['href'] ?>" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="<?= $currentRoute === 'settings' && $item['label'] === 'Settings' ? 'background:var(--accent-soft);color:var(--accent);' : 'color:var(--text-secondary);' ?>">
+                <span class="flex h-5 w-5 items-center justify-center"><?= navIcon($item['icon']) ?></span><?= $item['label'] ?>
             </a>
-            <a href="/settings#restore-database" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);">
-                <span class="flex h-5 w-5 items-center justify-center"><?= navIcon('wallet') ?></span>Backup &amp; Restore
-            </a>
+            <?php endforeach; ?>
         </nav>
 
         <div class="border-t px-3 py-4 space-y-3" style="border-color:var(--sidebar-border);">
@@ -143,14 +148,101 @@ function navIcon(string $icon): string
             <?php endif; ?>
         </header>
 
-        <div class="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <div class="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
             <div class="mx-auto max-w-screen-2xl space-y-6">
                 <?php if (isset($content)) echo $content; ?>
             </div>
         </div>
     </main>
 
+    <div id="appDialog" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="z-index:100;background:rgba(15,23,42,.48);" role="presentation">
+        <section class="w-full max-w-md rounded-2xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:0 24px 70px rgba(15,23,42,.24);" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+            <div class="flex items-start gap-3">
+                <span id="appDialogIcon" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background:var(--accent-soft);color:var(--accent);"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4m0 4h.01M10.3 3.8 2.9 17a2 2 0 0 0 1.75 3h14.7a2 2 0 0 0 1.75-3l-7.35-13.2a2 2 0 0 0-3.45 0Z"/></svg></span>
+                <div class="min-w-0 flex-1"><h2 id="appDialogTitle" class="text-base font-semibold" style="color:var(--text);">Please confirm</h2><p id="appDialogMessage" class="mt-1 text-sm leading-relaxed" style="color:var(--text-secondary);"></p></div>
+                <button type="button" id="appDialogClose" class="rounded-lg p-1 text-lg leading-none" aria-label="Close dialog" style="color:var(--text-muted);">×</button>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+                <button type="button" id="appDialogCancel" class="rounded-lg border px-4 py-2 text-sm font-semibold" style="border-color:var(--border);color:var(--text-secondary);">Cancel</button>
+                <button type="button" id="appDialogAccept" class="rounded-lg px-4 py-2 text-sm font-semibold text-white" style="background:var(--accent);">Continue</button>
+            </div>
+        </section>
+    </div>
+
     <script>
+        const appDialog = document.getElementById('appDialog');
+        const appDialogTitle = document.getElementById('appDialogTitle');
+        const appDialogMessage = document.getElementById('appDialogMessage');
+        const appDialogCancel = document.getElementById('appDialogCancel');
+        const appDialogAccept = document.getElementById('appDialogAccept');
+        const appDialogClose = document.getElementById('appDialogClose');
+        let appDialogResolve = null;
+        let appDialogPreviousFocus = null;
+        function closeAppDialog(accepted) {
+            if (appDialog.classList.contains('hidden')) return;
+            appDialog.classList.add('hidden');
+            appDialog.classList.remove('flex');
+            const resolve = appDialogResolve;
+            appDialogResolve = null;
+            if (resolve) resolve(accepted);
+            if (appDialogPreviousFocus && appDialogPreviousFocus.isConnected) appDialogPreviousFocus.focus();
+        }
+        function openAppDialog({title, message, confirmLabel = 'Continue', cancelLabel = 'Cancel', notice = false, danger = false}) {
+            appDialogPreviousFocus = document.activeElement;
+            appDialogTitle.textContent = title;
+            appDialogMessage.textContent = message;
+            appDialogCancel.textContent = cancelLabel;
+            appDialogCancel.classList.toggle('hidden', notice);
+            appDialogAccept.textContent = notice ? 'OK' : confirmLabel;
+            appDialogAccept.style.background = danger ? 'var(--danger)' : 'var(--accent)';
+            appDialog.classList.remove('hidden');
+            appDialog.classList.add('flex');
+            appDialogResolve = null;
+            appDialogAccept.focus();
+            return new Promise((resolve) => { appDialogResolve = resolve; });
+        }
+        window.appNotice = function(message, title = 'Notice') {
+            return openAppDialog({title: title, message: message, notice: true});
+        };
+        let appValidationNoticeOpen = false;
+        document.addEventListener('invalid', (event) => {
+            event.preventDefault();
+            if (appValidationNoticeOpen) return;
+            appValidationNoticeOpen = true;
+            const field = event.target;
+            window.appNotice(field.validationMessage || 'Please check this field.', 'Check this field')
+                .finally(() => { appValidationNoticeOpen = false; });
+        }, true);
+        appDialogCancel.addEventListener('click', () => closeAppDialog(false));
+        appDialogAccept.addEventListener('click', () => closeAppDialog(true));
+        appDialogClose.addEventListener('click', () => closeAppDialog(false));
+        appDialog.addEventListener('click', (event) => { if (event.target === appDialog) closeAppDialog(false); });
+        document.addEventListener('keydown', (event) => {
+            if (appDialog.classList.contains('hidden')) return;
+            if (event.key === 'Escape') { event.preventDefault(); closeAppDialog(false); }
+            if (event.key === 'Tab') {
+                const controls = [appDialogClose, appDialogCancel, appDialogAccept].filter((control) => !control.classList.contains('hidden'));
+                if (controls.length === 1) { event.preventDefault(); controls[0].focus(); return; }
+                if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls[controls.length - 1].focus(); }
+                else if (!event.shiftKey && document.activeElement === controls[controls.length - 1]) { event.preventDefault(); controls[0].focus(); }
+            }
+        });
+        document.addEventListener('submit', async (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.dataset.confirm || form.dataset.confirmed === 'true') return;
+            event.preventDefault();
+            const accepted = await openAppDialog({
+                title: form.dataset.confirmTitle || 'Please confirm',
+                message: form.dataset.confirm,
+                confirmLabel: form.dataset.confirmLabel || 'Continue',
+                danger: form.dataset.confirmDanger === 'true',
+            });
+            if (!accepted) return;
+            form.dataset.confirmed = 'true';
+            form.requestSubmit();
+            window.setTimeout(() => { delete form.dataset.confirmed; }, 1000);
+        });
+
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('-translate-x-full');
             document.getElementById('sidebar-backdrop').classList.toggle('hidden');

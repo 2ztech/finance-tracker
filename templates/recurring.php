@@ -117,7 +117,7 @@ ob_start();
                             class="rounded p-1.5 transition-colors" style="color:var(--text-muted);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                         </button>
-                        <form method="POST" action="/recurring" onsubmit="return confirm('Delete this recurring item?');">
+                        <form method="POST" action="/recurring" data-confirm="Delete this recurring item?" data-confirm-label="Delete" data-confirm-danger="true">
                             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="id" value="<?= $c['id'] ?>">

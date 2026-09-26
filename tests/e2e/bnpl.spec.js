@@ -1,10 +1,9 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, addTransaction } = require('./helpers');
+const { login, createAccount, switchAccount, addTransaction, confirmDialog } = require('./helpers');
 
 test.describe('BNPL / bills', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    page.on('dialog', (d) => d.accept());
   });
 
   function billCard(page, dueText) {
@@ -75,6 +74,7 @@ test.describe('BNPL / bills', () => {
     await page.goto('/bills');
     await expect(page.locator('body')).toContainText('Installment Plans');
     await page.locator('form[action="/plans/settle"] button[type="submit"]').first().click();
+    await confirmDialog(page);
     await page.waitForLoadState('networkidle');
     await expect(page.locator('body')).toContainText(/settled/i);
   });

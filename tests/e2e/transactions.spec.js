@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, addTransaction } = require('./helpers');
+const { login, createAccount, switchAccount, addTransaction, confirmDialog } = require('./helpers');
 
 test.describe('Transactions', () => {
   test.beforeEach(async ({ page }) => {
@@ -25,7 +25,6 @@ test.describe('Transactions', () => {
     await expect(page.locator('body')).toContainText('RM 400.00');
 
     // Edit the expense 100 -> 250.
-    page.on('dialog', (d) => d.accept());
     await page.goto('/transactions');
     const row = page.locator('.transaction-row', { hasText: 'expense-1' });
     await row.locator('button[onclick*="openEdit"]').click();
@@ -40,10 +39,9 @@ test.describe('Transactions', () => {
     // Delete the expense -> back to 500.
     await page.goto('/transactions');
     const row2 = page.locator('.transaction-row', { hasText: 'expense-1' });
-    await Promise.all([
-      page.waitForLoadState('networkidle'),
-      row2.locator('form[action*="/transactions"] button[type="submit"]').click(),
-    ]);
+    await row2.locator('form[action*="/transactions"] button[type="submit"]').click();
+    await confirmDialog(page);
+    await page.waitForLoadState('networkidle');
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 500.00');
   });

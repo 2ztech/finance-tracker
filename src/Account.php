@@ -29,15 +29,17 @@ final class Account
         $db = Database::getConnection();
         $stmt = $db->prepare("
             INSERT INTO accounts
-                (name, kind, color_hex, bnpl_mode, statement_day, due_day, first_due_offset,
+                (name, kind, color_hex, icon_data, icon_mime, bnpl_mode, statement_day, due_day, first_due_offset,
                  allow_partial, no_interest_months, credit_limit, opening_balance, start_month,
                  archived, sort_order, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         ");
         $stmt->execute([
             $d['name'],
             $d['kind'],
             $d['color_hex'] ?? '#4f6ef7',
+            $d['icon_data'] ?? null,
+            $d['icon_mime'] ?? 'image/png',
             $d['bnpl_mode'] ?? null,
             $d['statement_day'] ?? null,
             $d['due_day'] ?? null,
@@ -58,7 +60,9 @@ final class Account
         $db = Database::getConnection();
         $stmt = $db->prepare("
             UPDATE accounts SET
-                name = ?, kind = ?, color_hex = ?, bnpl_mode = ?, statement_day = ?, due_day = ?,
+                name = ?, kind = ?, color_hex = ?, icon_data = CASE WHEN ? = '1' THEN NULL WHEN ? IS NOT NULL THEN ? ELSE icon_data END,
+                icon_mime = CASE WHEN ? = '1' THEN 'image/png' WHEN ? IS NOT NULL THEN ? ELSE icon_mime END,
+                bnpl_mode = ?, statement_day = ?, due_day = ?,
                 first_due_offset = ?, allow_partial = ?, no_interest_months = ?, credit_limit = ?,
                 opening_balance = ?, start_month = ?, archived = ?, sort_order = ?
             WHERE id = ?
@@ -67,6 +71,12 @@ final class Account
             $d['name'],
             $d['kind'],
             $d['color_hex'] ?? '#4f6ef7',
+            (int) ($d['clear_icon'] ?? 0),
+            $d['icon_data'] ?? null,
+            $d['icon_data'] ?? null,
+            (int) ($d['clear_icon'] ?? 0),
+            $d['icon_data'] ?? null,
+            $d['icon_mime'] ?? 'image/png',
             $d['bnpl_mode'] ?? null,
             $d['statement_day'] ?? null,
             $d['due_day'] ?? null,

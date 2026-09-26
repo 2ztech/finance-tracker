@@ -56,7 +56,7 @@ ob_start();
     </div>
 <?php else: ?>
     <p class="mb-3 text-sm" style="color:var(--text-secondary);"><?= count($groups) ?> group(s) found &mdash; up to <?= $totalCandidates ?> redundant row(s).</p>
-    <form method="POST" action="/settings/duplicates/delete" onsubmit="return confirm('Delete the selected transaction(s)? This cannot be undone.');">
+    <form method="POST" action="/settings/duplicates/delete" data-confirm="Delete the selected transaction(s)? This cannot be undone." data-confirm-label="Delete" data-confirm-danger="true">
         <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
         <div class="space-y-4">
             <?php foreach ($groups as $g): ?>

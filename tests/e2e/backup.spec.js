@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount } = require('./helpers');
+const { login, createAccount, switchAccount, confirmDialog } = require('./helpers');
 const fs = require('fs');
 const os = require('os');
 
@@ -29,11 +29,9 @@ test.describe('Backup & restore', () => {
     // Restore the backup.
     await page.goto('/settings');
     await page.setInputFiles('input[name="db_file"]', backupPath);
-    page.once('dialog', (dialog) => dialog.accept());
-    await Promise.all([
-      page.waitForURL(/settings\?msg=/),
-      page.click('button:has-text("Restore")'),
-    ]);
+    await page.click('button:has-text("Restore")');
+    await confirmDialog(page);
+    await page.waitForURL(/settings\?msg=/);
     await expect(page.locator('body')).toContainText('restored successfully');
 
     await page.goto('/accounts');
@@ -48,11 +46,9 @@ test.describe('Backup & restore', () => {
 
     await page.goto('/settings');
     await page.setInputFiles('input[name="db_file"]', bad);
-    page.once('dialog', (dialog) => dialog.accept());
-    await Promise.all([
-      page.waitForURL(/settings\?msg=/),
-      page.click('button:has-text("Restore")'),
-    ]);
+    await page.click('button:has-text("Restore")');
+    await confirmDialog(page);
+    await page.waitForURL(/settings\?msg=/);
     await expect(page.locator('body')).toContainText(/Invalid or corrupt/);
 
     await page.goto('/accounts');

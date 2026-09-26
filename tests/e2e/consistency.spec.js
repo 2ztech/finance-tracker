@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, addTransaction } = require('./helpers');
+const { login, createAccount, switchAccount, addTransaction, confirmDialog } = require('./helpers');
 
 test.describe('Cross-page consistency', () => {
   test.beforeEach(async ({ page }) => {
@@ -59,11 +59,9 @@ test.describe('Cross-page consistency', () => {
 
     // Delete -> reverts
     await page.goto('/transactions');
-    page.on('dialog', (d) => d.accept());
-    await Promise.all([
-      page.waitForLoadState('load'),
-      page.locator('.transaction-row', { hasText: 'CONS_TX' }).locator('form[action^="/transactions"] button[type="submit"]').click(),
-    ]);
+    await page.locator('.transaction-row', { hasText: 'CONS_TX' }).locator('form[action^="/transactions"] button[type="submit"]').click();
+    await confirmDialog(page);
+    await page.waitForLoadState('load');
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 500.00');
     await expect(page.locator('body')).toContainText('RM 0.00 spent of RM 100.00');

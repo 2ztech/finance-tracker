@@ -273,11 +273,20 @@ if ($route === 'accounts/activate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null);
+    } catch (InvalidArgumentException $e) {
+        header('Location: /accounts?msg=icon_upload_invalid');
+        exit;
+    }
     $kind = in_array($_POST['kind'] ?? '', ['savings', 'credit', 'paylater'], true) ? $_POST['kind'] : 'savings';
     $data = [
         'name'           => trim($_POST['name'] ?? ''),
         'kind'           => $kind,
         'color_hex'      => $_POST['color_hex'] ?? '#4f6ef7',
+        'icon_data'      => $iconUpload['data'] ?? null,
+        'icon_mime'      => $iconUpload['mime'] ?? 'image/png',
+        'clear_icon'     => isset($_POST['clear_icon']) ? 1 : 0,
         'bnpl_mode'      => in_array($_POST['bnpl_mode'] ?? '', ['cycle', 'per_purchase'], true) ? $_POST['bnpl_mode'] : null,
         'statement_day'  => ($_POST['statement_day'] ?? '') !== '' ? (int) $_POST['statement_day'] : null,
         'due_day'        => ($_POST['due_day'] ?? '') !== '' ? (int) $_POST['due_day'] : null,

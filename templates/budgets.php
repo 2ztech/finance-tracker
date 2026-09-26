@@ -71,7 +71,7 @@ ob_start();
                                 <div class="h-2.5 w-2.5 rounded-full" style="background:<?= htmlspecialchars((string)$b['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></div>
                                 <span class="text-sm font-medium" style="color:var(--text);"><?= htmlspecialchars((string)$b['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
                             </div>
-                            <form method="POST" action="/budget/delete" class="inline" onsubmit="return confirm('Remove budget for <?= htmlspecialchars((string)$b['category_name'], ENT_QUOTES, 'UTF-8') ?>?');">
+                            <form method="POST" action="/budget/delete" class="inline" data-confirm="Remove budget for <?= htmlspecialchars((string)$b['category_name'], ENT_QUOTES, 'UTF-8') ?>?" data-confirm-label="Remove" data-confirm-danger="true">
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="category_id" value="<?= (int)$b['category_id'] ?>">
                                 <button type="submit" class="rounded p-0.5 text-xs" style="color:var(--text-muted);" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'" title="Remove budget">&times;</button>
