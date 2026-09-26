@@ -10,21 +10,26 @@ final class Expense
 
     // --- Transactions ---
 
-    public static function getTransactions(string $month, string $year): array
+    public static function getTransactions(string $month, string $year, ?int $accountId = null): array
     {
         $db = Database::getConnection();
         $startDate = "$year-$month-01";
         $endDate = date("Y-m-t", strtotime($startDate));
 
-        $query = "
+        $sql = "
             SELECT t.*, c.name AS category_name, c.color_hex 
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
-            WHERE t.date >= ? AND t.date <= ?
-            ORDER BY t.date DESC, t.id DESC
-        ";
-        $stmt = $db->prepare($query);
-        $stmt->execute([$startDate, $endDate]);
+            WHERE t.date >= ? AND t.date <= ?";
+        $params = [$startDate, $endDate];
+        if ($accountId !== null) {
+            $sql .= " AND t.account_id = ?";
+            $params[] = $accountId;
+        }
+        $sql .= " ORDER BY t.date DESC, t.id DESC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
@@ -72,48 +77,54 @@ final class Expense
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function getExpensesByCategory(string $month, string $year): array
+    public static function getExpensesByCategory(string $month, string $year, ?int $accountId = null): array
     {
         $db = Database::getConnection();
         $startDate = "$year-$month-01";
         $endDate = date("Y-m-t", strtotime($startDate));
 
-        $query = "
+        $sql = "
             SELECT c.id AS category_id, c.name, c.color_hex, ROUND(SUM(t.amount), 2) AS total
             FROM transactions t
             JOIN categories c ON t.category_id = c.id
-            WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?
-            GROUP BY c.id
-            ORDER BY total DESC
-        ";
-        $stmt = $db->prepare($query);
-        $stmt->execute([$startDate, $endDate]);
+            WHERE t.type = 'expense' AND t.date >= ? AND t.date <= ?";
+        $params = [$startDate, $endDate];
+        if ($accountId !== null) {
+            $sql .= " AND t.account_id = ?";
+            $params[] = $accountId;
+        }
+        $sql .= " GROUP BY c.id ORDER BY total DESC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    public static function addTransaction(int $categoryId, float $amount, string $type, string $description, string $date): bool
+    public static function addTransaction(int $categoryId, float $amount, string $type, string $description, string $date, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)");
         return $stmt->execute([
             $categoryId > 0 ? $categoryId : null,
             $amount,
             $type,
             $description,
             $date,
+            $accountId,
         ]);
     }
 
-    public static function updateTransaction(int $id, int $categoryId, float $amount, string $type, string $description, string $date): bool
+    public static function updateTransaction(int $id, int $categoryId, float $amount, string $type, string $description, string $date, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("UPDATE transactions SET category_id = ?, amount = ?, type = ?, description = ?, date = ? WHERE id = ?");
+        $stmt = $db->prepare("UPDATE transactions SET category_id = ?, amount = ?, type = ?, description = ?, date = ?, account_id = ? WHERE id = ?");
         return $stmt->execute([
             $categoryId > 0 ? $categoryId : null,
             $amount,
             $type,
             $description,
             $date,
+            $accountId,
             $id,
         ]);
     }
@@ -277,9 +288,20 @@ final class Expense
 
     // --- Commitments ---
 
-    public static function getCommitments(): array
+    public static function getCommitments(?int $accountId = null): array
     {
         $db = Database::getConnection();
+        if ($accountId !== null) {
+            $stmt = $db->prepare("
+                SELECT c.*, cat.name AS category_name, cat.color_hex 
+                FROM commitments c
+                LEFT JOIN categories cat ON c.category_id = cat.id
+                WHERE c.account_id = ?
+                ORDER BY c.due_date_day
+            ");
+            $stmt->execute([$accountId]);
+            return $stmt->fetchAll();
+        }
         $stmt = $db->query("
             SELECT c.*, cat.name AS category_name, cat.color_hex 
             FROM commitments c
@@ -296,13 +318,13 @@ final class Expense
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null): bool
+    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date]);
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId]);
         if ($success) {
-            self::syncAutoTransactions(null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date);
+            self::syncAutoTransactions(null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date, $accountId);
             if ($category_id !== null) {
                 self::syncTransactionsCategory($name, $category_id);
             }
@@ -310,7 +332,7 @@ final class Expense
         return $success;
     }
 
-    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null): bool
+    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
 
@@ -318,11 +340,11 @@ final class Expense
         $prev->execute([$id]);
         $oldName = $prev->fetchColumn();
 
-        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ? WHERE id = ?");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $id]);
+        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ?, account_id = ? WHERE id = ?");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId, $id]);
 
         if ($success) {
-            self::syncAutoTransactions(is_string($oldName) ? $oldName : null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date);
+            self::syncAutoTransactions(is_string($oldName) ? $oldName : null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date, $accountId);
             if ($category_id !== null) {
                 self::syncTransactionsCategory($name, $category_id);
             }
@@ -336,7 +358,7 @@ final class Expense
      * generated. Rows that fall outside the new start/end months are removed.
      * Start/end are treated as month boundaries; the due day governs the day.
      */
-    private static function syncAutoTransactions(?string $oldName, string $newName, string $type, float $amount, ?int $categoryId, int $dueDay, ?string $startDate = null, ?string $endDate = null): void
+    private static function syncAutoTransactions(?string $oldName, string $newName, string $type, float $amount, ?int $categoryId, int $dueDay, ?string $startDate = null, ?string $endDate = null, ?int $accountId = null): void
     {
         $db = Database::getConnection();
 
@@ -349,7 +371,7 @@ final class Expense
         $select->execute(['[Auto] ' . $newName]);
         $rows = $select->fetchAll();
 
-        $update = $db->prepare("UPDATE transactions SET amount = ?, type = ?, category_id = ?, date = ? WHERE id = ?");
+        $update = $db->prepare("UPDATE transactions SET amount = ?, type = ?, category_id = ?, date = ?, account_id = ? WHERE id = ?");
         $delete = $db->prepare("DELETE FROM transactions WHERE id = ?");
 
         $startMonth = ($startDate !== null && $startDate !== '') ? substr($startDate, 0, 7) : null;
@@ -369,7 +391,7 @@ final class Expense
                 continue;
             }
 
-            $update->execute([$amount, $type, $categoryId, self::clampedDueDate($y, $m, $dueDay), $row['id']]);
+            $update->execute([$amount, $type, $categoryId, self::clampedDueDate($y, $m, $dueDay), $accountId, $row['id']]);
         }
     }
 
@@ -427,7 +449,7 @@ final class Expense
         $commitments = $stmt->fetchAll();
 
         $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = ? AND date = ?");
-        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
+        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)");
 
         foreach ($commitments as $c) {
             $desc = "[Auto] " . $c['name'];
@@ -455,7 +477,7 @@ final class Expense
                         if ($afterStart && $beforeEnd) {
                             $checkStmt->execute([$desc, $type, $dueDateStr]);
                             if ($checkStmt->fetchColumn() == 0) {
-                                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
+                                $insertStmt->execute([$c["category_id"], $c["amount"], $type, $desc, $dueDateStr, $c["account_id"]]);
                             }
                         }
                     }
@@ -470,7 +492,7 @@ final class Expense
                     if ($beforeEnd) {
                         $checkStmt->execute([$desc, $type, $dueDateStr]);
                         if ($checkStmt->fetchColumn() == 0) {
-                            $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr]);
+                            $insertStmt->execute([$c["category_id"], $c["amount"], $type, $desc, $dueDateStr, $c["account_id"]]);
                         }
                     }
                 }

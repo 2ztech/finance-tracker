@@ -1,6 +1,10 @@
 <?php
 require_once __DIR__ . '/../src/Expense.php';
 require_once __DIR__ . '/../src/Category.php';
+require_once __DIR__ . '/../src/Account.php';
+
+$account = Account::active();
+$accountId = $account ? (int) $account['id'] : null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -15,12 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($_POST['action'] === 'add') {
             if ($name && $amount > 0 && $due_date >= 1 && $due_date <= 31 && !empty($start_date)) {
-                Expense::addCommitment($name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date);
+                Expense::addCommitment($name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date, $accountId);
             }
         } elseif ($_POST['action'] === 'edit') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0 && $name && $amount > 0 && $due_date >= 1 && $due_date <= 31 && !empty($start_date)) {
-                Expense::updateCommitment($id, $name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date);
+                Expense::updateCommitment($id, $name, $amount, $type, $due_date, $cleanCategoryId, $start_date, $end_date, $accountId);
             }
         } elseif ($_POST['action'] === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -35,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$commitments = Expense::getCommitments();
+$commitments = Expense::getCommitments($accountId);
 $today = date('Y-m-d');
 $activeCommitments = array_filter($commitments, function ($c) use ($today) {
     if (!empty($c['start_date']) && $c['start_date'] > $today) {

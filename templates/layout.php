@@ -1,17 +1,47 @@
 <?php
 require_once __DIR__ . '/../src/Auth.php';
+require_once __DIR__ . '/../src/Account.php';
 Auth::requireLogin();
 
 $currentRoute = $route ?? 'dashboard';
 
-$navItems = [
+$accounts = Account::all();
+$activeAccount = Account::active();
+$activeId = $activeAccount ? (int) $activeAccount['id'] : 0;
+$isLiability = $activeAccount ? Account::isLiability($activeAccount) : false;
+$netWorth = Account::netWorth();
+
+$accountNav = [
     'dashboard'    => ['label' => 'Dashboard',    'icon' => 'home'],
     'transactions' => ['label' => 'Transactions', 'icon' => 'document'],
     'recurring'    => ['label' => 'Recurring',    'icon' => 'calendar'],
-    'budgets'      => ['label' => 'Budgets',      'icon' => 'chart'],
-    'categories'   => ['label' => 'Categories',   'icon' => 'tag'],
-    'settings'     => ['label' => 'Settings',     'icon' => 'cog'],
 ];
+if ($isLiability) {
+    $accountNav['bills'] = ['label' => 'Bills', 'icon' => 'bill'];
+}
+$globalNav = [
+    'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
+    'categories' => ['label' => 'Categories', 'icon' => 'tag'],
+    'accounts'   => ['label' => 'Accounts',   'icon' => 'wallet'],
+    'settings'   => ['label' => 'Settings',   'icon' => 'cog'],
+];
+
+$returnPath = $_SERVER['REQUEST_URI'] ?? '/dashboard';
+
+function navIcon(string $icon): string
+{
+    return match ($icon) {
+        'home' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>',
+        'document' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>',
+        'calendar' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+        'bill' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>',
+        'tag' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>',
+        'chart' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
+        'wallet' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>',
+        'cog' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+        default => '',
+    };
+}
 ?><!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -24,7 +54,6 @@ $navItems = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- ===== Theme Variables ===== -->
     <style>
         :root {
             --bg:             #f3f4f6;
@@ -79,22 +108,17 @@ $navItems = [
             background: var(--bg);
             color: var(--text);
             -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
         }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 4px; }
     </style>
-
 </head>
 <body class="flex h-screen overflow-hidden">
 
-    <!-- ===== Sidebar Backdrop (mobile) ===== -->
     <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 backdrop-blur-sm lg:hidden" onclick="toggleSidebar()"></div>
 
-    <!-- ===== Sidebar ===== -->
-    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-60 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
-        <!-- Brand -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
         <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color:var(--sidebar-border);">
             <div class="flex items-center gap-2.5">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style="background:var(--accent);">E</div>
@@ -105,38 +129,47 @@ $navItems = [
             </button>
         </div>
 
-        <!-- Navigation -->
-        <nav class="flex-1 overflow-y-auto px-3 py-5 space-y-1">
-            <?php foreach ($navItems as $key => $item): ?>
-                <?php $isActive = ($currentRoute === $key || ($currentRoute === '' && $key === 'dashboard')); ?>
-                <a href="/<?= $key ?>"
-                   class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors"
-                   style="<?= $isActive ? "background:var(--accent-soft);color:var(--accent);" : "color:var(--text-secondary);" ?>"
-                   onmouseover="if(!this.style.color.includes('var(--accent)'))this.style.background='var(--bg-hover)'"
-                   onmouseout="if(!this.style.color.includes('var(--accent)'))this.style.background=''">
-                    <span class="flex h-5 w-5 items-center justify-center">
-                        <?php if ($item['icon'] === 'home'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                        <?php elseif ($item['icon'] === 'document'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        <?php elseif ($item['icon'] === 'calendar'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        <?php elseif ($item['icon'] === 'tag'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
-                        <?php elseif ($item['icon'] === 'chart'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                        <?php elseif ($item['icon'] === 'cog'): ?>
-                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        <?php endif; ?>
-                    </span>
-                    <?= htmlspecialchars((string) $item['label'], ENT_QUOTES, 'UTF-8') ?>
-                </a>
-            <?php endforeach; ?>
+        <!-- Net worth + account switcher -->
+        <div class="px-3 py-4 border-b space-y-3" style="border-color:var(--sidebar-border);">
+            <div class="rounded-lg border px-3 py-2.5" style="background:var(--bg-alt);border-color:var(--border);">
+                <p class="text-[11px] font-medium" style="color:var(--text-muted);">Net Worth</p>
+                <p class="text-lg font-bold" style="color:var(--text);">RM <?= number_format($netWorth, 2) ?></p>
+            </div>
+            <?php if (!empty($accounts)): ?>
+            <form method="POST" action="/accounts/activate">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <input type="hidden" name="return" value="<?= htmlspecialchars((string) $returnPath, ENT_QUOTES, 'UTF-8') ?>">
+                <label class="mb-1 block text-[11px] font-medium" style="color:var(--text-muted);">Account</label>
+                <select name="account_id" onchange="this.form.submit()"
+                    class="w-full rounded-lg border px-3 py-2 text-sm font-semibold"
+                    style="background:var(--bg-alt);border-color:var(--border);color:var(--text);">
+                    <?php foreach ($accounts as $a): ?>
+                        <option value="<?= (int) $a['id'] ?>" <?= (int) $a['id'] === $activeId ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+            <?php endif; ?>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+            <?php
+            $renderNav = function (array $items) use ($currentRoute) {
+                foreach ($items as $key => $item) {
+                    $isActive = ($currentRoute === $key || ($currentRoute === '' && $key === 'dashboard'));
+                    echo '<a href="/' . $key . '" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="' . ($isActive ? 'background:var(--accent-soft);color:var(--accent);' : 'color:var(--text-secondary);') . '" onmouseover="if(!this.style.color.includes(\'var(--accent)\'))this.style.background=\'var(--bg-hover)\'" onmouseout="if(!this.style.color.includes(\'var(--accent)\'))this.style.background=\'\'">';
+                    echo '<span class="flex h-5 w-5 items-center justify-center">' . navIcon($item['icon']) . '</span>';
+                    echo htmlspecialchars((string) $item['label'], ENT_QUOTES, 'UTF-8') . '</a>';
+                }
+            };
+            $renderNav($accountNav);
+            ?>
+            <div class="my-2 border-t" style="border-color:var(--border);"></div>
+            <?php $renderNav($globalNav); ?>
         </nav>
 
-        <!-- Sidebar Footer -->
         <div class="border-t px-3 py-4 space-y-3" style="border-color:var(--sidebar-border);">
-            <!-- Theme Toggle -->
             <button onclick="toggleTheme()" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                 <span class="flex h-5 w-5 items-center justify-center" id="theme-icon-light">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -147,7 +180,6 @@ $navItems = [
                 <span id="theme-label">Light Mode</span>
             </button>
 
-            <!-- User Info -->
             <div class="flex items-center gap-2.5 px-3">
                 <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold" style="background:var(--accent-soft);color:var(--accent);">
                     <?= strtoupper(substr($_SESSION['username'] ?? 'U', 0, 1)) ?>
@@ -157,7 +189,6 @@ $navItems = [
                 </div>
             </div>
 
-            <!-- Sign Out -->
             <a href="/logout" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--danger);" onmouseover="this.style.background='var(--danger-soft)'" onmouseout="this.style.background=''">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 Sign Out
@@ -165,17 +196,17 @@ $navItems = [
         </div>
     </aside>
 
-    <!-- ===== Main Content ===== -->
     <main class="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <!-- Mobile Header -->
         <header class="flex items-center gap-3 border-b px-4 py-3 lg:hidden" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
             <button onclick="toggleSidebar()" class="rounded-lg p-1.5" style="color:var(--text-secondary);">
                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
             <span class="text-lg font-semibold" style="color:var(--text);">Expenzz</span>
+            <?php if ($activeAccount): ?>
+                <span class="ml-auto text-sm" style="color:var(--text-secondary);"><?= htmlspecialchars((string) $activeAccount['name'], ENT_QUOTES, 'UTF-8') ?></span>
+            <?php endif; ?>
         </header>
 
-        <!-- Page Content -->
         <div class="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             <div class="mx-auto max-w-5xl space-y-6">
                 <?php if (isset($content)) echo $content; ?>
@@ -183,15 +214,12 @@ $navItems = [
         </div>
     </main>
 
-    <!-- ===== Scripts ===== -->
     <script>
-        // Sidebar toggle
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('-translate-x-full');
             document.getElementById('sidebar-backdrop').classList.toggle('hidden');
         }
 
-        // Theme toggle
         (function() {
             var stored = localStorage.getItem('theme');
             if (stored === 'light') {
@@ -221,3 +249,4 @@ $navItems = [
     </script>
 </body>
 </html>
+

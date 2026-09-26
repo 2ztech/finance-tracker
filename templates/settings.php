@@ -1,11 +1,10 @@
 <?php
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Settings.php';
+require_once __DIR__ . '/../src/Account.php';
 Auth::requireLogin();
 
 $msg = $_GET['msg'] ?? '';
-$tsm = Settings::get('tracking_start_month', date('Y-m'));
-$balance = Settings::get('starting_bank_balance', '0');
 
 ob_start();
 ?>
@@ -39,26 +38,11 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
 
 <!-- Section: Preferences & Account -->
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <!-- General -->
+    <!-- Accounts -->
     <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <h3 class="mb-1 text-base font-semibold" style="color:var(--text);">General</h3>
-        <p class="mb-4 text-sm" style="color:var(--text-secondary);">Ledger configuration and baseline balance.</p>
-        <form method="POST" action="/settings/ledger" class="space-y-3">
-            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
-            <div>
-                <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Tracking Start Month</label>
-                <input type="month" name="tracking_start_month" value="<?= htmlspecialchars($tsm) ?>" required
-                    class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-            </div>
-            <div>
-                <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Initial Baseline Balance (RM)</label>
-                <input type="number" step="0.01" name="starting_balance" value="<?= htmlspecialchars($balance) ?>"
-                    class="w-full rounded-lg border px-3 py-2 text-sm font-bold" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-            </div>
-            <button type="submit" class="w-full rounded-lg py-2.5 text-sm font-semibold text-white" style="background:var(--accent);">
-                Save
-            </button>
-        </form>
+        <h3 class="mb-1 text-base font-semibold" style="color:var(--text);">Accounts</h3>
+        <p class="mb-4 text-sm" style="color:var(--text-secondary);">Manage savings, credit, and paylater accounts — including opening balances and billing cycles.</p>
+        <a href="/accounts" class="block w-full rounded-lg py-2.5 text-center text-sm font-semibold text-white" style="background:var(--accent);">Manage Accounts</a>
     </div>
 
     <!-- Account -->
@@ -114,7 +98,7 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
     <div class="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between" style="border-color:var(--border-light);">
         <div>
             <p class="text-sm font-medium" style="color:var(--text);">Import Transactions (CSV)</p>
-            <p class="text-xs" style="color:var(--text-secondary);">Upload a CSV with columns: Date, Type, Amount, Category, Description.</p>
+            <p class="text-xs" style="color:var(--text-secondary);">Upload a CSV with columns: Date, Type, Amount, Category, Description (optional 6th column: Account).</p>
         </div>
         <form method="POST" action="/settings/import" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">

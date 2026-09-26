@@ -89,9 +89,80 @@ final class Database
                 ip TEXT NOT NULL,
                 attempted_at TEXT NOT NULL
             )",
+            "CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('savings', 'credit', 'paylater')),
+                color_hex TEXT NOT NULL DEFAULT '#4f6ef7',
+                bnpl_mode TEXT CHECK(bnpl_mode IN ('cycle', 'per_purchase')),
+                statement_day INTEGER,
+                due_day INTEGER,
+                first_due_offset INTEGER NOT NULL DEFAULT 1,
+                allow_partial INTEGER NOT NULL DEFAULT 0,
+                no_interest_months INTEGER,
+                credit_limit REAL,
+                opening_balance REAL NOT NULL DEFAULT 0,
+                start_month TEXT,
+                archived INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE TABLE IF NOT EXISTS transfers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                from_account_id INTEGER NOT NULL,
+                to_account_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                description TEXT,
+                kind TEXT NOT NULL DEFAULT 'internal',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+            )",
+            "CREATE TABLE IF NOT EXISTS paylater_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                purchase_txn_id INTEGER,
+                total_payable REAL NOT NULL,
+                cash_price REAL,
+                interest REAL NOT NULL DEFAULT 0,
+                months INTEGER NOT NULL,
+                installment_amount REAL NOT NULL,
+                first_due_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+            )",
+            "CREATE TABLE IF NOT EXISTS paylater_installments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_id INTEGER NOT NULL,
+                seq INTEGER NOT NULL,
+                due_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                paid_amount REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'open',
+                bill_id INTEGER,
+                FOREIGN KEY (plan_id) REFERENCES paylater_plans(id) ON DELETE CASCADE
+            )",
+            "CREATE TABLE IF NOT EXISTS bills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                period_start TEXT,
+                period_end TEXT,
+                due_date TEXT NOT NULL,
+                amount_due REAL NOT NULL DEFAULT 0,
+                paid_amount REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'open',
+                FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+            )",
             "CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
             "CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)",
+            "CREATE INDEX IF NOT EXISTS idx_transfers_date ON transfers(date)",
+            "CREATE INDEX IF NOT EXISTS idx_plans_account ON paylater_plans(account_id)",
+            "CREATE INDEX IF NOT EXISTS idx_installments_plan ON paylater_installments(plan_id)",
+            "CREATE INDEX IF NOT EXISTS idx_installments_due ON paylater_installments(due_date)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_account_due ON bills(account_id, due_date)",
         ];
 
         foreach ($queries as $query) {
@@ -103,6 +174,11 @@ final class Database
             "ALTER TABLE commitments ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'",
             "ALTER TABLE commitments ADD COLUMN start_date TEXT",
             "ALTER TABLE commitments ADD COLUMN end_date TEXT",
+            "ALTER TABLE commitments ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
+            "ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
+            "ALTER TABLE transactions ADD COLUMN plan_id INTEGER",
+            "ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER",
+            "ALTER TABLE quick_templates ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
         ];
 
         foreach ($alterations as $alter) {
@@ -110,6 +186,18 @@ final class Database
                 $db->exec($alter);
             } catch (PDOException) {
                 // Column already exists
+            }
+        }
+
+        // Indexes that depend on columns added above must run after the ALTERs.
+        foreach ([
+            "CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)",
+            "CREATE INDEX IF NOT EXISTS idx_commitments_account ON commitments(account_id)",
+        ] as $index) {
+            try {
+                $db->exec($index);
+            } catch (PDOException) {
+                // ignore
             }
         }
 

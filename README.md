@@ -6,16 +6,19 @@ Unlike standard budget apps that just sum up monthly totals, Expenzz is built on
 
 ## Features
 
-- **Ledger Logic:** Real cash-on-hand tracking with month-over-month balance carry-over. Future unpaid bills don't affect your current liquidity.
+- **Multi-Account:** Manage savings, credit card, and paylater (BNPL) accounts. Switch the active account from the sidebar; balances and net worth are tracked per account.
+- **Internal Transfers:** Move money between accounts without distorting income/expense totals.
+- **Credit Cards & Paylater:** Cycle-based statements (Atome Card, Shopee/TikTok PayLater) and per-purchase instalment plans (Atome BNPL, Grab PayLater), with bills, partial payments, early settlement, and refunds.
+- **Ledger Logic:** Real cash-on-hand tracking with opening balances and month-to-month carry-over.
 - **EOM Projections:** Smart end-of-month balance estimates accounting for unpaid commitments and scheduled income.
 - **Recurring Commitments:** Auto-process bills and income with due dates, start/end date ranges, and category linking.
-- **Budget Tracking:** Set monthly spending caps per category with progress bars on the dashboard.
-- **Quick-Add Templates:** Save frequently used transactions (e.g. "Lunch at office") as one-click templates.
-- **CSV Import/Export:** Smart deduplication engine prevents double-counting on bank statement imports.
-- **Dark/Light Mode:** Toggleable theme with localStorage persistence. Easy on the eyes day or night.
-- **PDF Export:** Generate bank-statement style monthly reports with beginning/closing balance and running totals.
+- **Budget Tracking:** Set monthly spending caps per category with progress bars on the dashboard (aggregated across accounts).
+- **Quick-Add Templates:** Save frequently used transactions as one-click templates.
+- **CSV Import/Export:** Smart deduplication engine; optional Account column.
+- **Dark/Light Mode:** Toggleable theme with localStorage persistence.
+- **PDF Export:** Bank-statement style monthly reports for savings accounts.
 - **Undo Delete:** 8-second undo toast for accidental transaction deletions.
-- **Data Portability:** 100% self-hosted SQLite. Export CSV, download/restore full database backups from the settings UI.
+- **Data Portability:** 100% self-hosted SQLite with backup/restore from the settings UI.
 - **Dynamic Timezone:** Syncs to your server's timezone via Docker environment variables.
 
 ## Tech Stack

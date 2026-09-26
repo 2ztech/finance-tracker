@@ -13,7 +13,37 @@ final class Maintenance
 {
     public static function run(): void
     {
+        self::seedAccounts();
         self::repairPhantomDates();
+    }
+
+    /**
+     * Seed the first savings account from the legacy global settings and attach
+     * existing rows to it, so a single-account install keeps working after the
+     * multi-account upgrade. Runs once; the user can reorganise manually after.
+     */
+    private static function seedAccounts(): void
+    {
+        if (Settings::get('accounts_seeded') !== null) {
+            return;
+        }
+
+        $db = Database::getConnection();
+        $existing = (int) $db->query("SELECT COUNT(*) FROM accounts")->fetchColumn();
+
+        if ($existing === 0) {
+            $opening = (float) Settings::get('starting_bank_balance', 0);
+            $startMonth = (string) Settings::get('tracking_start_month', date('Y-m'));
+            $stmt = $db->prepare("INSERT INTO accounts (name, kind, color_hex, opening_balance, start_month, first_due_offset, created_at) VALUES (?, 'savings', '#4f6ef7', ?, ?, 1, ?)");
+            $stmt->execute(['Maybank', $opening, $startMonth, date('Y-m-d H:i:s')]);
+            $accountId = (int) $db->lastInsertId();
+
+            $db->prepare("UPDATE transactions SET account_id = ? WHERE account_id IS NULL")->execute([$accountId]);
+            $db->prepare("UPDATE commitments SET account_id = ? WHERE account_id IS NULL")->execute([$accountId]);
+            $db->prepare("UPDATE quick_templates SET account_id = ? WHERE account_id IS NULL")->execute([$accountId]);
+        }
+
+        Settings::set('accounts_seeded', date('Y-m-d H:i:s'));
     }
 
     /**

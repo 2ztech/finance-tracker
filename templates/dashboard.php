@@ -1,6 +1,7 @@
 <?php
-require_once __DIR__ . '/../src/Settings.php';
+require_once __DIR__ . '/../src/Account.php';
 require_once __DIR__ . '/../src/Expense.php';
+require_once __DIR__ . '/../src/Budget.php';
 
 $m = Helper::parseMonth();
 $year = $m['year'];
@@ -10,43 +11,62 @@ $prevMonth = $m['prevMonth'];
 $nextMonth = $m['nextMonth'];
 $currentDisplay = $m['currentDisplay'];
 
-$incomeThisMonth = round(Expense::getTotalIncome($month, $year), 2);
-$expensesThisMonth = round(Expense::getTotalExpense($month, $year), 2);
-$onHandBalance = Expense::getOnHandBalance($month, $year);
-$projectedBalance = Expense::getEOMProjection($month, $year);
-$expensesByCategory = Expense::getExpensesByCategory($month, $year);
+$account = Account::active();
 
-$prevYear = date('Y', strtotime($prevMonth . '-01'));
-$prevMonthNum = date('m', strtotime($prevMonth . '-01'));
-$prevIncome = round(Expense::getTotalIncome($prevMonthNum, $prevYear), 2);
-$prevExpenses = round(Expense::getTotalExpense($prevMonthNum, $prevYear), 2);
-$currNet = $incomeThisMonth - $expensesThisMonth;
-$prevNet = $prevIncome - $prevExpenses;
+$rangeStart = "$year-$month-01";
+$rangeEnd = date('Y-m-t', strtotime($rangeStart));
+$prevStart = date('Y-m-01', strtotime($prevMonth . '-01'));
+$prevEnd = date('Y-m-t', strtotime($prevMonth . '-01'));
+
+$budgets = Budget::getAll();
+$expensesByCatTotal = [];
+$expensesByCategory = [];
+
+if ($account !== null) {
+    $accountId = (int) $account['id'];
+    $isLiability = Account::isLiability($account);
+
+    $mov = Account::movements($accountId, $rangeStart, $rangeEnd);
+    $prevMov = Account::movements($accountId, $prevStart, $prevEnd);
+    $incomeThisMonth = $mov['income'];
+    $expensesThisMonth = $mov['expense'];
+    $paymentsThisMonth = $mov['in'];
+    $balanceNow = Account::balance($accountId);
+
+    $currNet = $incomeThisMonth - $expensesThisMonth;
+    $prevNet = $prevMov['income'] - $prevMov['expense'];
+
+    $expensesByCategory = Expense::getExpensesByCategory($month, $year, $accountId);
+    foreach ($expensesByCategory as $cat) {
+        $expensesByCatTotal[(int) $cat['category_id']] = $cat['total'];
+    }
+}
 
 function delta(float $curr, float $prev): array {
     if ($prev == 0) return ['diff' => $curr, 'pct' => null, 'sign' => $curr >= 0 ? 'up' : 'down'];
     $diff = $curr - $prev;
-    $pct = round(($diff / abs($prev)) * 100, 1);
-    return ['diff' => $diff, 'pct' => $pct, 'sign' => $diff >= 0 ? 'up' : 'down'];
+    return ['diff' => $diff, 'pct' => round(($diff / abs($prev)) * 100, 1), 'sign' => $diff >= 0 ? 'up' : 'down'];
 }
-$dIncome = delta($incomeThisMonth, $prevIncome);
-$dExpense = delta($expensesThisMonth, $prevExpenses);
-$dNet = delta($currNet, $prevNet);
-
-$budgets = Budget::getAll();
-$expensesByCatTotal = [];
-foreach (Expense::getExpensesByCategory($month, $year) as $cat) {
-    $expensesByCatTotal[(int) $cat['category_id']] = $cat['total'];
-}
+$dIncome = $account ? delta($incomeThisMonth, $prevMov['income']) : null;
+$dExpense = $account ? delta($expensesThisMonth, $prevMov['expense']) : null;
+$dNet = $account ? delta($currNet, $prevNet) : null;
 
 ob_start();
 ?>
 
+<?php if ($account === null): ?>
+    <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">No account yet. <a href="/accounts" style="color:var(--accent);">Create one</a> to get started.</p>
+    </div>
+<?php else: ?>
+
 <!-- Header -->
 <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
-        <h2 class="text-2xl font-bold" style="color:var(--text);">Dashboard</h2>
-        <p class="mt-0.5 text-sm" style="color:var(--text-secondary);">Overview of your financial position.</p>
+        <h2 class="text-2xl font-bold" style="color:var(--text);"><?= htmlspecialchars((string) $account['name'], ENT_QUOTES, 'UTF-8') ?></h2>
+        <p class="mt-0.5 text-sm" style="color:var(--text-secondary);">
+            <?= $isLiability ? 'Outstanding and repayment overview.' : 'Overview of this account.' ?>
+        </p>
     </div>
     <div class="flex items-center rounded-lg border p-0.5 text-sm" style="background:var(--bg-alt);border-color:var(--border);">
         <a href="?month=<?= htmlspecialchars((string)$prevMonth, ENT_QUOTES, 'UTF-8') ?>" class="rounded-md px-3 py-1.5 transition-colors" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'" onmouseout="this.style.background='';this.style.color='var(--text-secondary)'">
@@ -62,73 +82,83 @@ ob_start();
 <!-- Stat Cards -->
 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
     <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <p class="text-xs font-medium" style="color:var(--text-muted);">On Hand</p>
-        <p class="mt-2 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($onHandBalance, 2) ?></p>
-        <p class="mt-1 text-xs" style="color:var(--success);">Available now</p>
+        <p class="text-xs font-medium" style="color:var(--text-muted);"><?= $isLiability ? 'Outstanding' : 'Balance' ?></p>
+        <p class="mt-2 text-2xl font-bold" style="color:<?= $isLiability ? 'var(--expense)' : 'var(--text)' ?>;">RM <?= number_format($balanceNow, 2) ?></p>
+        <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= $isLiability ? 'Currently owed' : 'Available now' ?></p>
     </div>
-    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <p class="text-xs font-medium" style="color:var(--text-muted);">EOM Projection</p>
-        <p class="mt-2 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($projectedBalance, 2) ?></p>
-        <p class="mt-1 text-xs" style="color:var(--accent);">End of month est.</p>
-    </div>
-    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <p class="text-xs font-medium" style="color:var(--text-muted);">Income</p>
-        <p class="mt-2 text-2xl font-bold" style="color:var(--income);">RM <?= number_format($incomeThisMonth, 2) ?></p>
-        <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)date('M', mktime(0,0,0,(int)$month,1)), ENT_QUOTES, 'UTF-8') ?></p>
-    </div>
-    <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-        <p class="text-xs font-medium" style="color:var(--text-muted);">Expenses</p>
-        <p class="mt-2 text-2xl font-bold" style="color:var(--expense);">RM <?= number_format($expensesThisMonth, 2) ?></p>
-        <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)date('M', mktime(0,0,0,(int)$month,1)), ENT_QUOTES, 'UTF-8') ?></p>
-    </div>
+    <?php if ($isLiability): ?>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Purchases</p>
+            <p class="mt-2 text-2xl font-bold" style="color:var(--expense);">RM <?= number_format($expensesThisMonth, 2) ?></p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);">This month</p>
+        </div>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Payments</p>
+            <p class="mt-2 text-2xl font-bold" style="color:var(--income);">RM <?= number_format($paymentsThisMonth, 2) ?></p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);">Paid this month</p>
+        </div>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Available Credit</p>
+            <p class="mt-2 text-2xl font-bold" style="color:var(--text);">
+                <?= $account['credit_limit'] !== null ? 'RM ' . number_format(max(0, (float) $account['credit_limit'] - $balanceNow), 2) : '—' ?>
+            </p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);"><?= $account['credit_limit'] !== null ? 'of RM ' . number_format((float) $account['credit_limit'], 2) : 'No limit set' ?></p>
+        </div>
+    <?php else: ?>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Income</p>
+            <p class="mt-2 text-2xl font-bold" style="color:var(--income);">RM <?= number_format($incomeThisMonth, 2) ?></p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);">This month</p>
+        </div>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Expenses</p>
+            <p class="mt-2 text-2xl font-bold" style="color:var(--expense);">RM <?= number_format($expensesThisMonth, 2) ?></p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);">This month</p>
+        </div>
+        <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+            <p class="text-xs font-medium" style="color:var(--text-muted);">Net</p>
+            <p class="mt-2 text-2xl font-bold" style="color:<?= $currNet >= 0 ? 'var(--income)' : 'var(--expense)' ?>;">RM <?= number_format($currNet, 2) ?></p>
+            <p class="mt-1 text-xs" style="color:var(--text-muted);">This month</p>
+        </div>
+    <?php endif; ?>
 </div>
 
 <!-- Monthly Comparison -->
 <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-    <h3 class="mb-4 text-sm font-semibold" style="color:var(--text);">
-        vs <?= htmlspecialchars((string)date('F Y', strtotime($prevMonth . '-01')), ENT_QUOTES, 'UTF-8') ?>
-    </h3>
+    <h3 class="mb-4 text-sm font-semibold" style="color:var(--text);">vs <?= htmlspecialchars((string)date('F Y', strtotime($prevMonth . '-01')), ENT_QUOTES, 'UTF-8') ?></h3>
     <div class="grid grid-cols-3 gap-3 text-center">
+        <?php
+        $cols = $isLiability
+            ? [['Purchases', $dExpense, true], ['Payments', delta($paymentsThisMonth, $prevMov['in']), false], ['Net Change', $dNet, false]]
+            : [['Income', $dIncome, false], ['Expenses', $dExpense, true], ['Net', $dNet, false]];
+        foreach ($cols as [$label, $d, $invert]):
+            $good = $d['sign'] === 'up' ? !$invert : $invert;
+        ?>
         <div>
-            <p class="text-xs" style="color:var(--text-muted);">Income</p>
-            <p class="mt-1 text-lg font-bold" style="color:<?= $dIncome['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;">
-                <?= $dIncome['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dIncome['diff'], 2) ?>
+            <p class="text-xs" style="color:var(--text-muted);"><?= $label ?></p>
+            <p class="mt-1 text-lg font-bold" style="color:<?= $good ? 'var(--income)' : 'var(--expense)' ?>;">
+                <?= $d['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($d['diff'], 2) ?>
             </p>
-            <?php if ($dIncome['pct'] !== null): ?>
-                <p class="text-xs" style="color:<?= $dIncome['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;"><?= $dIncome['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dIncome['pct'] ?>%</p>
+            <?php if ($d['pct'] !== null): ?>
+                <p class="text-xs" style="color:<?= $good ? 'var(--income)' : 'var(--expense)' ?>;"><?= $d['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $d['pct'] ?>%</p>
             <?php endif; ?>
         </div>
-        <div>
-            <p class="text-xs" style="color:var(--text-muted);">Expenses</p>
-            <p class="mt-1 text-lg font-bold" style="color:<?= $dExpense['sign'] === 'up' ? 'var(--expense)' : 'var(--income)' ?>;">
-                <?= $dExpense['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dExpense['diff'], 2) ?>
-            </p>
-            <?php if ($dExpense['pct'] !== null): ?>
-                <p class="text-xs" style="color:<?= $dExpense['sign'] === 'up' ? 'var(--expense)' : 'var(--income)' ?>;"><?= $dExpense['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dExpense['pct'] ?>%</p>
-            <?php endif; ?>
-        </div>
-        <div>
-            <p class="text-xs" style="color:var(--text-muted);">Net</p>
-            <p class="mt-1 text-lg font-bold" style="color:<?= $dNet['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;">
-                <?= $dNet['sign'] === 'up' ? '+' : '' ?>RM <?= number_format($dNet['diff'], 2) ?>
-            </p>
-            <?php if ($dNet['pct'] !== null): ?>
-                <p class="text-xs" style="color:<?= $dNet['sign'] === 'up' ? 'var(--income)' : 'var(--expense)' ?>;"><?= $dNet['sign'] === 'up' ? '&uarr;' : '&darr;' ?> <?= $dNet['pct'] ?>%</p>
-            <?php endif; ?>
-        </div>
+        <?php endforeach; ?>
     </div>
 </div>
 
-<!-- Budgets -->
+<!-- Budgets (global across accounts) -->
 <div class="rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-    <h3 class="mb-4 text-sm font-semibold" style="color:var(--text);">Category Budgets</h3>
+    <h3 class="mb-1 text-sm font-semibold" style="color:var(--text);">Category Budgets</h3>
+    <p class="mb-4 text-xs" style="color:var(--text-muted);">Across all accounts.</p>
     <?php if (empty($budgets)): ?>
         <p class="text-xs" style="color:var(--text-muted);">No budgets set. Add one from the Budgets page.</p>
     <?php else: ?>
+        <?php $allSpend = Expense::getExpensesByCategory($month, $year); $allSpendById = []; foreach ($allSpend as $c) { $allSpendById[(int)$c['category_id']] = $c['total']; } ?>
         <div class="space-y-3">
             <?php foreach ($budgets as $b): ?>
                 <?php
-                $spent = $expensesByCatTotal[(int) $b['category_id']] ?? 0;
+                $spent = $allSpendById[(int) $b['category_id']] ?? 0;
                 $pct = $b['amount'] > 0 ? min(($spent / $b['amount']) * 100, 100) : 0;
                 $over = $spent > $b['amount'];
                 ?>
@@ -148,14 +178,11 @@ ob_start();
 
 <!-- Chart -->
 <div class="rounded-xl border p-6" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-    <h3 class="mb-6 text-center text-lg font-bold" style="color:var(--text);">Expense Breakdown &mdash; <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></h3>
-
+    <h3 class="mb-6 text-center text-lg font-bold" style="color:var(--text);"><?= $isLiability ? 'Purchases' : 'Expense' ?> Breakdown &mdash; <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></h3>
     <?php if (empty($expensesByCategory)): ?>
         <p class="py-12 text-center text-sm" style="color:var(--text-muted);">No expenses recorded this month.</p>
     <?php else: ?>
-        <div class="mx-auto h-72 max-w-md">
-            <canvas id="expenseChart"></canvas>
-        </div>
+        <div class="mx-auto h-72 max-w-md"><canvas id="expenseChart"></canvas></div>
         <?php $totalExp = array_sum(array_column($expensesByCategory, 'total')); ?>
         <div class="mt-6 space-y-1 rounded-lg border" style="border-color:var(--border-light);">
             <?php foreach ($expensesByCategory as $cat): ?>
@@ -182,7 +209,7 @@ ob_start();
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: <?= json_encode(array_map(fn($c) => htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8'), $expensesByCategory)) ?>,
+            labels: <?= json_encode(array_map(fn($c) => htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8'), $expensesByCategory), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>,
             datasets: [{
                 data: <?= json_encode(array_column($expensesByCategory, 'total')) ?>,
                 backgroundColor: <?= json_encode(array_column($expensesByCategory, 'color_hex')) ?>,
@@ -191,23 +218,14 @@ ob_start();
             }],
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '72%',
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: document.documentElement.classList.contains('dark') ? '#8890a5' : '#6b7280',
-                        font: { family: "'Outfit', sans-serif" },
-                        padding: 14,
-                    },
-                },
-            },
+            responsive: true, maintainAspectRatio: false, cutout: '72%',
+            plugins: { legend: { position: 'bottom', labels: { color: document.documentElement.classList.contains('dark') ? '#8890a5' : '#6b7280', font: { family: "'Outfit', sans-serif" }, padding: 14 } } },
         },
     });
 })();
 </script>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <?php

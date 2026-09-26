@@ -74,29 +74,16 @@ if ($route === 'settings/account' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-if ($route === 'settings/ledger' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    Auth::requireLogin();
-    require_once __DIR__ . '/../src/Settings.php';
-    if (isset($_POST['tracking_start_month'])) {
-        Settings::set('tracking_start_month', $_POST['tracking_start_month']);
-    }
-    if (isset($_POST['starting_balance'])) {
-        Settings::set('starting_bank_balance', (string) round((float) $_POST['starting_balance'], 2));
-    }
-    header('Location: /settings?msg=settings_success');
-    exit;
-}
-
 if ($route === 'settings/export') {
     Auth::requireLogin();
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="finance_transactions_' . date('Y-m-d_Hi') . '.csv"');
     $db = Database::getConnection();
-    $stmt = $db->query("SELECT t.date, t.type, t.amount, c.name as category_name, t.description FROM transactions t LEFT JOIN categories c ON t.category_id = c.id ORDER BY t.date DESC");
+    $stmt = $db->query("SELECT t.date, t.type, t.amount, c.name as category_name, t.description, a.name as account_name FROM transactions t LEFT JOIN categories c ON t.category_id = c.id LEFT JOIN accounts a ON a.id = t.account_id ORDER BY t.date DESC");
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Date', 'Type', 'Amount', 'Category', 'Description']);
+    fputcsv($output, ['Date', 'Type', 'Amount', 'Category', 'Description', 'Account']);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        fputcsv($output, [$row['date'], $row['type'], $row['amount'], $row['category_name'], $row['description']]);
+        fputcsv($output, [$row['date'], $row['type'], $row['amount'], $row['category_name'], $row['description'], $row['account_name']]);
     }
     fclose($output);
     exit;
@@ -191,8 +178,10 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 fgetcsv($handle);
                 $stmtCat = $db->prepare("SELECT id FROM categories WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND type = ? LIMIT 1");
                 $stmtCreateCat = $db->prepare("INSERT INTO categories (name, type, color_hex) VALUES (?, ?, ?)");
-                $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date) VALUES (?, ?, ?, ?, ?)");
+                $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) LIMIT 1");
+                $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) LIMIT 1");
+                $defaultAccount = Account::defaultId();
 
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
                     if (count($data) < 5) {
@@ -203,9 +192,19 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $amount = round((float)($data[2] ?? 0), 2);
                     $categoryName = trim($data[3] ?? '');
                     $description = trim($data[4] ?? '');
+                    $accountName = trim($data[5] ?? '');
 
                     if ($date === '' || $amount <= 0 || !in_array($type, ['income', 'expense'], true)) {
                         continue;
+                    }
+
+                    $accId = $defaultAccount;
+                    if ($accountName !== '') {
+                        $stmtAcc->execute([$accountName]);
+                        $found = $stmtAcc->fetchColumn();
+                        if ($found) {
+                            $accId = (int) $found;
+                        }
                     }
 
                     $stmtCheck->execute([$date, $amount, $type, $description]);
@@ -226,7 +225,7 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    $stmtInsert->execute([$catId, $amount, $type, $description, $date]);
+                    $stmtInsert->execute([$catId, $amount, $type, $description, $date, $accId]);
                 }
                 $db->commit();
                 fclose($handle);
@@ -244,14 +243,167 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 
+if ($route === 'accounts/activate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    Account::setActive((int) ($_POST['account_id'] ?? 0));
+    $back = $_POST['return'] ?? '/dashboard';
+    header('Location: ' . (str_starts_with($back, '/') ? $back : '/dashboard'));
+    exit;
+}
+
+if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $id = (int) ($_POST['id'] ?? 0);
+    $kind = in_array($_POST['kind'] ?? '', ['savings', 'credit', 'paylater'], true) ? $_POST['kind'] : 'savings';
+    $data = [
+        'name'           => trim($_POST['name'] ?? ''),
+        'kind'           => $kind,
+        'color_hex'      => $_POST['color_hex'] ?? '#4f6ef7',
+        'bnpl_mode'      => in_array($_POST['bnpl_mode'] ?? '', ['cycle', 'per_purchase'], true) ? $_POST['bnpl_mode'] : null,
+        'statement_day'  => ($_POST['statement_day'] ?? '') !== '' ? (int) $_POST['statement_day'] : null,
+        'due_day'        => ($_POST['due_day'] ?? '') !== '' ? (int) $_POST['due_day'] : null,
+        'first_due_offset' => (int) ($_POST['first_due_offset'] ?? 1),
+        'allow_partial'  => isset($_POST['allow_partial']) ? 1 : 0,
+        'no_interest_months' => ($_POST['no_interest_months'] ?? '') !== '' ? (int) $_POST['no_interest_months'] : null,
+        'credit_limit'   => ($_POST['credit_limit'] ?? '') !== '' ? (float) $_POST['credit_limit'] : null,
+        'opening_balance'=> (float) ($_POST['opening_balance'] ?? 0),
+        'start_month'    => ($_POST['start_month'] ?? '') !== '' ? $_POST['start_month'] : null,
+        'archived'       => isset($_POST['archived']) ? 1 : 0,
+        'sort_order'     => (int) ($_POST['sort_order'] ?? 0),
+    ];
+    if ($data['name'] === '') {
+        header('Location: /accounts?msg=name_required');
+        exit;
+    }
+    if ($kind !== 'savings') {
+        $data['opening_balance'] = (float) ($_POST['opening_balance'] ?? 0);
+        $data['start_month'] = null;
+    }
+    if ($id > 0) {
+        Account::update($id, $data);
+        header('Location: /accounts?msg=updated');
+    } else {
+        $newId = Account::create($data);
+        if ($newId > 0 && Account::activeId() === null) {
+            Account::setActive($newId);
+        }
+        header('Location: /accounts?msg=created');
+    }
+    exit;
+}
+
+if ($route === 'accounts/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $id = (int) ($_POST['id'] ?? 0);
+    $db = Database::getConnection();
+    $txCount = 0;
+    if ($id > 0) {
+        $s = $db->prepare("SELECT COUNT(*) FROM transactions WHERE account_id = ?");
+        $s->execute([$id]);
+        $txCount = (int) $s->fetchColumn();
+    }
+    if ($id > 0 && $txCount === 0) {
+        Account::delete($id);
+        header('Location: /accounts?msg=deleted');
+    } else {
+        header('Location: /accounts?msg=blocked');
+    }
+    exit;
+}
+
+if ($route === 'accounts/reassign' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $from = (int) ($_POST['from_account_id'] ?? 0);
+    $to = (int) ($_POST['to_account_id'] ?? 0);
+    $catId = (int) ($_POST['category_id'] ?? 0);
+    if ($from > 0 && $to > 0 && $from !== $to) {
+        $db = Database::getConnection();
+        $sql = "UPDATE transactions SET account_id = ? WHERE account_id = ?";
+        $params = [$to, $from];
+        if ($catId > 0) {
+            $sql .= " AND category_id = ?";
+            $params[] = $catId;
+        }
+        $db->prepare($sql)->execute($params);
+        // Move matching commitments too when no category filter narrows it.
+        if ($catId === 0) {
+            $db->prepare("UPDATE commitments SET account_id = ? WHERE account_id = ?")->execute([$to, $from]);
+            $db->prepare("UPDATE quick_templates SET account_id = ? WHERE account_id = ?")->execute([$to, $from]);
+        }
+    }
+    header('Location: /accounts?msg=reassigned');
+    exit;
+}
+
+if ($route === 'transfers/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {    Auth::requireLogin();
+    $from = (int) ($_POST['from_account_id'] ?? 0);
+    $to = (int) ($_POST['to_account_id'] ?? 0);
+    $amount = (float) ($_POST['amount'] ?? 0);
+    $date = $_POST['date'] ?? date('Y-m-d');
+    $desc = trim($_POST['description'] ?? '');
+    $kind = ($_POST['transfer_kind'] ?? 'internal') === 'bill_payment' ? 'bill_payment' : 'internal';
+    $return = $_POST['return_month'] ?? date('Y-m');
+    if ($from > 0 && $to > 0 && $from !== $to && $amount > 0) {
+        Transfer::create($from, $to, $amount, $date, $desc, $kind);
+    }
+    header('Location: /transactions?month=' . urlencode($return));
+    exit;
+}
+
+if ($route === 'transfers/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    Transfer::delete((int) ($_POST['id'] ?? 0));
+    header('Location: /transactions?month=' . urlencode($_POST['return_month'] ?? date('Y-m')));
+    exit;
+}
+
+if ($route === 'bills/pay' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $accountId = (int) ($_POST['account_id'] ?? 0);
+    $dueDate = $_POST['due_date'] ?? '';
+    $amount = (float) ($_POST['amount'] ?? 0);
+    $from = (int) ($_POST['from_account_id'] ?? 0);
+    $date = $_POST['date'] ?? date('Y-m-d');
+    if ($accountId > 0 && $dueDate !== '' && $amount > 0) {
+        Bill::payDue($accountId, $dueDate, $amount, $from, $date);
+    }
+    header('Location: /bills?msg=paid');
+    exit;
+}
+
+if ($route === 'plans/settle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $planId = (int) ($_POST['plan_id'] ?? 0);
+    $from = (int) ($_POST['from_account_id'] ?? 0);
+    $date = $_POST['date'] ?? date('Y-m-d');
+    if ($planId > 0) {
+        PaylaterPlan::settle($planId, $from, $date);
+    }
+    header('Location: /bills?msg=settled');
+    exit;
+}
+
+if ($route === 'plans/refund' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $planId = (int) ($_POST['plan_id'] ?? 0);
+    $amount = (float) ($_POST['amount'] ?? 0);
+    $date = $_POST['date'] ?? date('Y-m-d');
+    if ($planId > 0 && $amount > 0) {
+        PaylaterPlan::refund($planId, $amount, $date);
+    }
+    header('Location: /bills?msg=refunded');
+    exit;
+}
+
 if ($route === 'quick-template/add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     $type = $_POST['type'] ?? 'expense';
     $desc = trim($_POST['description'] ?? '');
     $catId = (int) ($_POST['category_id'] ?? 0);
     $amount = (float) ($_POST['amount'] ?? 0);
+    $accountId = (int) ($_POST['account_id'] ?? 0);
     if ($desc !== '' && in_array($type, ['income', 'expense'], true)) {
-        QuickTemplate::create($type, $desc, $catId > 0 ? $catId : null, $amount);
+        QuickTemplate::create($type, $desc, $catId > 0 ? $catId : null, $amount, $accountId > 0 ? $accountId : null);
     }
     header('Location: /transactions?month=' . urlencode($_POST['return_month'] ?? date('Y-m')));
     exit;
@@ -293,6 +445,8 @@ $routes = [
     'budgets' => 'budgets.php',
     'settings' => 'settings.php',
     'settings/duplicates' => 'duplicates.php',
+    'accounts' => 'accounts.php',
+    'bills' => 'bills.php',
 ];
 
 if (array_key_exists($route, $routes)) {
