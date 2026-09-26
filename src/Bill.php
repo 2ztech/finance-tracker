@@ -23,6 +23,9 @@ final class Bill
     {
         $db = Database::getConnection();
 
+        // Drop plans whose purchase transaction no longer exists.
+        PaylaterPlan::reconcileAccount($accountId);
+
         $stmt = $db->prepare("
             SELECT i.due_date AS due_date,
                    ROUND(SUM(i.amount), 2) AS amount_due,

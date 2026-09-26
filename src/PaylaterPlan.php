@@ -230,6 +230,45 @@ final class PaylaterPlan
         Bill::sync((int) $plan['account_id']);
     }
 
+    /** Remove a plan's instalments and any transactions tied to it. */
+    private static function deletePlanData(int $planId): void
+    {
+        $db = Database::getConnection();
+        $db->prepare("DELETE FROM paylater_installments WHERE plan_id = ?")->execute([$planId]);
+        $db->prepare("DELETE FROM transactions WHERE plan_id = ?")->execute([$planId]);
+        $db->prepare("DELETE FROM paylater_plans WHERE id = ?")->execute([$planId]);
+    }
+
+    /**
+     * Drop plans whose purchase transaction no longer exists (e.g. deleted
+     * before plan-binding existed). Does not call Bill::sync, so it is safe to
+     * call from within Bill::sync.
+     */
+    public static function reconcileAccount(int $accountId): int
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT id, purchase_txn_id FROM paylater_plans WHERE account_id = ?");
+        $stmt->execute([$accountId]);
+        $plans = $stmt->fetchAll();
+
+        $check = $db->prepare("SELECT COUNT(*) FROM transactions WHERE id = ?");
+        $removed = 0;
+        foreach ($plans as $p) {
+            $txnId = (int) ($p['purchase_txn_id'] ?? 0);
+            $exists = 0;
+            if ($txnId > 0) {
+                $check->execute([$txnId]);
+                $exists = (int) $check->fetchColumn();
+            }
+            if ($exists === 0) {
+                self::deletePlanData((int) $p['id']);
+                $removed++;
+                AppLog::info('orphan_plan_removed', ['plan_id' => (int) $p['id'], 'account_id' => $accountId]);
+            }
+        }
+        return $removed;
+    }
+
     /** Remove a plan and its instalments (used when its purchase is deleted). */
     public static function cancel(int $planId): void
     {
@@ -237,10 +276,7 @@ final class PaylaterPlan
         if ($plan === null) {
             return;
         }
-        $db = Database::getConnection();
-        $db->prepare("DELETE FROM paylater_installments WHERE plan_id = ?")->execute([$planId]);
-        $db->prepare("DELETE FROM transactions WHERE plan_id = ?")->execute([$planId]);
-        $db->prepare("DELETE FROM paylater_plans WHERE id = ?")->execute([$planId]);
+        self::deletePlanData($planId);
         Bill::sync((int) $plan['account_id']);
         AppLog::info('plan_cancelled', ['plan_id' => $planId, 'account_id' => (int) $plan['account_id']]);
     }
