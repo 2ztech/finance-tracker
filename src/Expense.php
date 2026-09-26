@@ -320,7 +320,7 @@ final class Expense
     private static function commitmentsQuery(?int $accountId, int $archived): array
     {
         $db = Database::getConnection();
-        $sql = "SELECT c.*, cat.name AS category_name, cat.color_hex
+        $sql = "SELECT c.*, cat.name AS category_name, cat.color_hex, cat.icon_key, cat.icon_data, cat.icon_mime
                 FROM commitments c
                 LEFT JOIN categories cat ON c.category_id = cat.id
                 WHERE c.archived = ?";

@@ -65,6 +65,7 @@ main .rounded-xl.border, main .rounded-2xl.border { border-radius: var(--radius)
 .category-content { display: grid; grid-template-columns: minmax(0, 1fr); }
 .dashboard-screen .metric-card { min-height: 90px; }
 .dashboard-screen table th, .dashboard-screen table td { padding-top: 9px; padding-bottom: 9px; }
+.recurring-items-table { min-width: 760px; }
 @media (min-width: 1480px) {
   .category-content { grid-template-columns: minmax(140px, .9fr) minmax(160px, 1.1fr); }
 }

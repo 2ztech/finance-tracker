@@ -11,7 +11,7 @@ test.describe('Recurring items', () => {
   }
 
   function itemCard(page, name) {
-    return page.locator('div', { hasText: name }).filter({ has: page.locator('button[onclick*="editItem"]') }).last();
+    return page.locator('tr.recurring-row', { hasText: name }).first();
   }
 
   async function submitRecurring(page) {
