@@ -18,6 +18,28 @@ final class Category
         return $stmt->execute([$name, $type, $color_hex]);
     }
 
+    public static function typeOf(int $id): ?string
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT type FROM categories WHERE id = ?");
+        $stmt->execute([$id]);
+        $type = $stmt->fetchColumn();
+        return $type === false ? null : (string) $type;
+    }
+
+    /**
+     * A category is valid for a transaction type when it matches, or when the
+     * transaction is uncategorized (id <= 0). Enforced server-side so a crafted
+     * POST cannot pair an income transaction with an expense category.
+     */
+    public static function isValidForType(int $id, string $type): bool
+    {
+        if ($id <= 0) {
+            return true;
+        }
+        return self::typeOf($id) === $type;
+    }
+
     public static function delete(int $id): bool
     {
         $db = Database::getConnection();

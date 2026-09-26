@@ -9,3 +9,8 @@ QA/playwright-report/
 QA/screenshots/
 data/test/
 public/data/
+.phpunit.result.cache
+.playwright-mcp/
+.env
+.env.*
+.DS_Store

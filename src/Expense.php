@@ -17,9 +17,10 @@ final class Expense
         $endDate = date("Y-m-t", strtotime($startDate));
 
         $sql = "
-            SELECT t.*, c.name AS category_name, c.color_hex 
+            SELECT t.*, c.name AS category_name, c.color_hex, a.name AS account_name
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
+            LEFT JOIN accounts a ON t.account_id = a.id
             WHERE t.date >= ? AND t.date <= ?";
         $params = [$startDate, $endDate];
         if ($accountId !== null) {
