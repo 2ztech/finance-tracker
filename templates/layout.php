@@ -8,17 +8,14 @@ $currentRoute = $route ?? 'dashboard';
 $accounts = Account::all();
 $activeAccount = Account::active();
 $activeId = $activeAccount ? (int) $activeAccount['id'] : 0;
-$isLiability = $activeAccount ? Account::isLiability($activeAccount) : false;
 $netWorth = Account::netWorth();
 
 $accountNav = [
     'dashboard'    => ['label' => 'Dashboard',    'icon' => 'home'],
     'transactions' => ['label' => 'Transactions', 'icon' => 'document'],
+    'bills'        => ['label' => 'Bills & BNPL', 'icon' => 'bill'],
     'recurring'    => ['label' => 'Recurring',    'icon' => 'calendar'],
 ];
-if ($isLiability) {
-    $accountNav['bills'] = ['label' => 'Bills', 'icon' => 'bill'];
-}
 $globalNav = [
     'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
     'categories' => ['label' => 'Categories', 'icon' => 'tag'],
@@ -43,7 +40,7 @@ function navIcon(string $icon): string
     };
 }
 ?><!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,71 +51,13 @@ function navIcon(string $icon): string
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <style>
-        :root {
-            --bg:             #f3f4f6;
-            --bg-alt:         #ffffff;
-            --bg-hover:       #e5e7eb;
-            --border:         #e5e7eb;
-            --border-light:   #f3f4f6;
-            --text:           #111827;
-            --text-secondary: #6b7280;
-            --text-muted:     #9ca3af;
-            --accent:         #4f6ef7;
-            --accent-hover:   #3b57e0;
-            --accent-soft:    #eef0ff;
-            --danger:         #ef4444;
-            --danger-soft:    #fef2f2;
-            --success:        #10b981;
-            --success-soft:   #ecfdf5;
-            --income:         #059669;
-            --expense:        #dc2626;
-            --sidebar-bg:     #ffffff;
-            --sidebar-border: #e5e7eb;
-            --shadow:         0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
-            --shadow-lg:      0 4px 12px rgba(0,0,0,.06);
-            --radius:         12px;
-        }
-        .dark {
-            --bg:             #0b0e14;
-            --bg-alt:         #151923;
-            --bg-hover:       #1e2433;
-            --border:         #1e2433;
-            --border-light:   #232940;
-            --text:           #e4e8f1;
-            --text-secondary: #8890a5;
-            --text-muted:     #5c6378;
-            --accent:         #5b8def;
-            --accent-hover:   #7ba3f5;
-            --accent-soft:    #1a2340;
-            --danger:         #f87171;
-            --danger-soft:    #2d1b1b;
-            --success:        #4ade80;
-            --success-soft:   #1a2d20;
-            --income:         #4ade80;
-            --expense:        #f87171;
-            --sidebar-bg:     #111520;
-            --sidebar-border: #1e2433;
-            --shadow:         0 1px 3px rgba(0,0,0,.2);
-            --shadow-lg:      0 4px 12px rgba(0,0,0,.3);
-            --radius:         12px;
-        }
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            -webkit-font-smoothing: antialiased;
-        }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 4px; }
-    </style>
+    <link href="/app.css" rel="stylesheet">
 </head>
 <body class="flex h-screen overflow-hidden">
 
     <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 backdrop-blur-sm lg:hidden" onclick="toggleSidebar()"></div>
 
-    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-50 flex w-60 flex-col border-r transition-transform duration-300 -translate-x-full lg:translate-x-0" style="background:var(--sidebar-bg);border-color:var(--sidebar-border);">
         <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color:var(--sidebar-border);">
             <div class="flex items-center gap-2.5">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white" style="background:var(--accent);">E</div>
@@ -167,19 +106,16 @@ function navIcon(string $icon): string
             ?>
             <div class="my-2 border-t" style="border-color:var(--border);"></div>
             <?php $renderNav($globalNav); ?>
+            <div class="my-2 border-t" style="border-color:var(--border);"></div>
+            <a href="/settings#data-management" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);">
+                <span class="flex h-5 w-5 items-center justify-center"><?= navIcon('document') ?></span>Import / Export
+            </a>
+            <a href="/settings#restore-database" class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);">
+                <span class="flex h-5 w-5 items-center justify-center"><?= navIcon('wallet') ?></span>Backup &amp; Restore
+            </a>
         </nav>
 
         <div class="border-t px-3 py-4 space-y-3" style="border-color:var(--sidebar-border);">
-            <button onclick="toggleTheme()" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors" style="color:var(--text-secondary);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
-                <span class="flex h-5 w-5 items-center justify-center" id="theme-icon-light">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                </span>
-                <span class="flex h-5 w-5 items-center justify-center hidden" id="theme-icon-dark">
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-                </span>
-                <span id="theme-label">Light Mode</span>
-            </button>
-
             <div class="flex items-center gap-2.5 px-3">
                 <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold" style="background:var(--accent-soft);color:var(--accent);">
                     <?= strtoupper(substr($_SESSION['username'] ?? 'U', 0, 1)) ?>
@@ -208,7 +144,7 @@ function navIcon(string $icon): string
         </header>
 
         <div class="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
-            <div class="mx-auto max-w-5xl space-y-6">
+            <div class="mx-auto max-w-screen-2xl space-y-6">
                 <?php if (isset($content)) echo $content; ?>
             </div>
         </div>
@@ -220,33 +156,52 @@ function navIcon(string $icon): string
             document.getElementById('sidebar-backdrop').classList.toggle('hidden');
         }
 
-        (function() {
-            var stored = localStorage.getItem('theme');
-            if (stored === 'light') {
-                document.documentElement.classList.remove('dark');
+        const appModals = ['editModal', 'accountModal', 'payModal', 'refundModal']
+            .map((id) => document.getElementById(id)).filter(Boolean);
+        appModals.forEach((modal) => {
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            if (!modal.hasAttribute('aria-label')) {
+                const title = modal.querySelector('h3');
+                if (title) modal.setAttribute('aria-label', title.textContent.trim());
             }
-            updateThemeUI();
-        })();
-
-        function toggleTheme() {
-            var html = document.documentElement;
-            if (html.classList.contains('dark')) {
-                html.classList.remove('dark');
-                localStorage.setItem('theme', 'light');
-            } else {
-                html.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
+        });
+        const modalFocusReturn = new WeakMap();
+        const modalObserver = new MutationObserver((changes) => changes.forEach((change) => {
+            const modal = change.target;
+            if (modal.classList.contains('hidden')) {
+                if (modal.dataset.wasOpen !== 'true') return;
+                modal.dataset.wasOpen = 'false';
+                const returnTo = modalFocusReturn.get(modal);
+                if (returnTo && returnTo.isConnected) returnTo.focus();
+                return;
             }
-            updateThemeUI();
-        }
+            if (modal.dataset.wasOpen === 'true') return;
+            modal.dataset.wasOpen = 'true';
+            modalFocusReturn.set(modal, document.activeElement);
+            const firstField = modal.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])') || modal.querySelector('button:not([disabled])');
+            if (firstField) firstField.focus();
+        }));
+        appModals.forEach((modal) => modalObserver.observe(modal, { attributes: true, attributeFilter: ['class'] }));
+        document.addEventListener('keydown', (event) => {
+            const modal = appModals.find((item) => !item.classList.contains('hidden'));
+            if (!modal) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                const close = { editModal: 'closeEdit', accountModal: 'closeAccountForm', payModal: 'closePay', refundModal: 'closeRefund' }[modal.id];
+                if (close && typeof window[close] === 'function') window[close]();
+                return;
+            }
+            if (event.key === 'Tab') {
+                const focusable = [...modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+                    .filter((el) => el.getClientRects().length > 0);
+                if (!focusable.length) return;
+                const first = focusable[0], last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+        });
 
-        function updateThemeUI() {
-            var isDark = document.documentElement.classList.contains('dark');
-            document.getElementById('theme-icon-light').classList.toggle('hidden', !isDark);
-            document.getElementById('theme-icon-dark').classList.toggle('hidden', isDark);
-            document.getElementById('theme-label').textContent = isDark ? 'Light Mode' : 'Dark Mode';
-        }
     </script>
 </body>
 </html>
-

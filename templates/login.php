@@ -25,46 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?><!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Expenzz</title>
     <link href="/tailwind.min.css" rel="stylesheet">
+    <link href="/app.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <style>
-        :root {
-            --bg: #f3f4f6;
-            --card: #ffffff;
-            --border: #e5e7eb;
-            --text: #111827;
-            --text-secondary: #6b7280;
-            --text-muted: #9ca3af;
-            --accent: #4f6ef7;
-            --accent-hover: #3b57e0;
-            --input-bg: #f9fafb;
-        }
-        .dark {
-            --bg: #0b0e14;
-            --card: #151923;
-            --border: #1e2433;
-            --text: #e4e8f1;
-            --text-secondary: #8890a5;
-            --text-muted: #5c6378;
-            --accent: #5b8def;
-            --accent-hover: #7ba3f5;
-            --input-bg: #111520;
-        }
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            -webkit-font-smoothing: antialiased;
-        }
-    </style>
 </head>
 <body class="flex min-h-screen items-center justify-center p-4">
 

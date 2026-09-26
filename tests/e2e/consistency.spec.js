@@ -44,7 +44,7 @@ test.describe('Cross-page consistency', () => {
 
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 460.00');
-    await expect(page.locator('body')).toContainText('40 / RM 100');
+    await expect(page.locator('body')).toContainText('RM 40.00 spent of RM 100.00');
 
     // Edit 40 -> 70
     await page.goto('/transactions');
@@ -55,7 +55,7 @@ test.describe('Cross-page consistency', () => {
 
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 430.00');
-    await expect(page.locator('body')).toContainText('70 / RM 100');
+    await expect(page.locator('body')).toContainText('RM 70.00 spent of RM 100.00');
 
     // Delete -> reverts
     await page.goto('/transactions');
@@ -66,6 +66,6 @@ test.describe('Cross-page consistency', () => {
     ]);
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 500.00');
-    await expect(page.locator('body')).toContainText('0 / RM 100');
+    await expect(page.locator('body')).toContainText('RM 0.00 spent of RM 100.00');
   });
 });

@@ -13,6 +13,17 @@ test.describe('Accounts', () => {
     await expect(page.locator('body')).toContainText('RM 1,000.00');
   });
 
+  test('account modal opens with focus and closes with Escape', async ({ page }) => {
+    await page.goto('/accounts');
+    const trigger = page.getByRole('button', { name: '+ Add Account' });
+    await trigger.click();
+    await expect(page.getByRole('dialog', { name: 'Add Account' })).toBeVisible();
+    await expect(page.locator('#acc_name')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#accountModal')).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test('account scoping isolates transactions', async ({ page }) => {
     await createAccount(page, { name: 'TEST_Scope_A', kind: 'savings', opening: '500', start: '2026-01' });
     await createAccount(page, { name: 'TEST_Scope_B', kind: 'savings', opening: '500', start: '2026-01' });

@@ -605,12 +605,14 @@ function filterEditCategories() {
 }
 function onAddAccountChange() {
     var sel = document.getElementById('add_account_id');
+    var form = document.getElementById('addRecordForm');
+    if (!sel || !form) return;
     var kind = accountKinds[sel.value] || 'savings';
     var isLiab = kind !== 'savings';
     var block = document.getElementById('repayBlock');
     if (block) block.classList.toggle('hidden', kind !== 'paylater');
     // Keep the Type labels consistent with the selected account's kind.
-    var typeSel = document.getElementById('addRecordForm').querySelector('select[name="type"]');
+    var typeSel = form.querySelector('select[name="type"]');
     if (typeSel && typeSel.options.length >= 2) {
         typeSel.options[0].text = isLiab ? 'Purchase' : 'Expense';
         typeSel.options[1].text = isLiab ? 'Refund / Credit' : 'Income';
@@ -636,7 +638,9 @@ function updateRepayHint() {
     var months = parseInt(document.getElementById('months').value || '1', 10);
     hint.textContent = 'Total repayable: RM ' + (amt * months).toFixed(2) + ' over ' + months + ' month(s).';
 }
-document.getElementById('addRecordForm').querySelector('input[name="amount"]').addEventListener('input', updateRepayHint);
+var addForm = document.getElementById('addRecordForm');
+var addAmountInput = addForm ? addForm.querySelector('input[name="amount"]') : null;
+if (addAmountInput) addAmountInput.addEventListener('input', updateRepayHint);
 var _monthsEl = document.getElementById('months'); if (_monthsEl) _monthsEl.addEventListener('input', updateRepayHint);
 document.addEventListener('DOMContentLoaded', function(){ onAddAccountChange(); });
 
@@ -654,7 +658,8 @@ function openEdit(id, date, catId, desc, amount, type, accountId) {
     m.classList.remove('hidden'); m.classList.add('flex');
 }
 function closeEdit() { var m=document.getElementById('editModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
-document.getElementById('editModal').addEventListener('click', function(e){ if(e.target===this) closeEdit(); });
+var editModal = document.getElementById('editModal');
+if (editModal) editModal.addEventListener('click', function(e){ if(e.target===this) closeEdit(); });
 
 function applyFilters() {
     var query=(document.getElementById('filterSearch').value||'').toLowerCase();

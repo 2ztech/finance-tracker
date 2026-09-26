@@ -29,6 +29,7 @@ test.describe('Backup & restore', () => {
     // Restore the backup.
     await page.goto('/settings');
     await page.setInputFiles('input[name="db_file"]', backupPath);
+    page.once('dialog', (dialog) => dialog.accept());
     await Promise.all([
       page.waitForURL(/settings\?msg=/),
       page.click('button:has-text("Restore")'),
@@ -47,6 +48,7 @@ test.describe('Backup & restore', () => {
 
     await page.goto('/settings');
     await page.setInputFiles('input[name="db_file"]', bad);
+    page.once('dialog', (dialog) => dialog.accept());
     await Promise.all([
       page.waitForURL(/settings\?msg=/),
       page.click('button:has-text("Restore")'),

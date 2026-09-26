@@ -1,0 +1,69 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f8fc;
+  --bg-alt: #ffffff;
+  --bg-hover: #f3f6fb;
+  --border: #e7ebf2;
+  --border-light: #edf0f5;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --accent: #3155c8;
+  --accent-hover: #2648b7;
+  --accent-soft: #eaf1ff;
+  --danger: #f05a5a;
+  --danger-soft: #fdecec;
+  --success: #2dbe9b;
+  --success-soft: #e7f8f3;
+  --income: #159b7e;
+  --expense: #e34f52;
+  --info: #4f8df7;
+  --info-soft: #eaf2ff;
+  --purple: #7c63d9;
+  --purple-soft: #f0ecff;
+  --warning: #d98a22;
+  --warning-soft: #fff4e2;
+  --sidebar-bg: #fff;
+  --sidebar-border: #e7ebf2;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .035);
+  --shadow-lg: 0 14px 40px rgba(15, 23, 42, .14);
+  --radius: 15px;
+  --card: #fff;
+  --input-bg: #fff;
+}
+* { scrollbar-color: var(--text-muted) transparent; }
+body { background: var(--bg); color: var(--text); font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; }
+button, a, input, select, textarea { transition: color .15s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease; }
+a { text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
+input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea {
+  border-radius: 9px !important; background-color: var(--bg-alt) !important; border-color: var(--border) !important;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent) !important; outline: 0; }
+button[type=submit]:not([class*=text-\[]) { border-radius: 9px; }
+#sidebar { box-shadow: 1px 0 0 var(--sidebar-border); }
+#sidebar nav a { min-height: 40px; }
+#sidebar nav a:hover { background: var(--bg-hover) !important; color: var(--text) !important; }
+main > header { min-height: 60px; }
+main > div { scroll-behavior: smooth; }
+main > div > div { width: 100%; }
+main h2 { color: var(--text); letter-spacing: -.025em; }
+main h3 { letter-spacing: -.01em; }
+main .rounded-xl.border, main .rounded-2xl.border { border-radius: var(--radius); }
+table { border-collapse: separate; border-spacing: 0; }
+th { color: var(--text-secondary); font-weight: 500; }
+tr:hover td { background: var(--bg-hover); }
+input[type=color] { border: 0; }
+@media (max-width: 1023px) {
+  body { height: auto !important; min-height: 100vh; overflow: auto !important; }
+  main { min-height: 100vh; overflow: visible !important; }
+  main > div { overflow: visible !important; padding: 18px 14px !important; }
+  main > div > div { gap: 18px !important; }
+}
+@media (max-width: 640px) {
+  main > div { padding: 14px 12px !important; }
+  .overflow-x-auto { max-width: calc(100vw - 24px); }
+  #editModal, #payModal, #refundModal, #accountModal { align-items: flex-end; padding: 0 !important; }
+  #editModal > div, #payModal > div, #refundModal > div, #accountModal > div { max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 20px; }
+  input, select, button { min-height: 40px; }
+}

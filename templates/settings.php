@@ -79,7 +79,7 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
 </div>
 
 <!-- Section: Data Management -->
-<div class="rounded-xl border" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+<div id="data-management" class="rounded-xl border scroll-mt-6" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
     <div class="border-b px-5 py-4" style="border-color:var(--border-light);">
         <h3 class="text-base font-semibold" style="color:var(--text);">Data & Backups</h3>
         <p class="text-sm" style="color:var(--text-secondary);">Export, import, backup, and restore your financial data.</p>
@@ -118,12 +118,12 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
     </div>
 
     <!-- Database Restore -->
-    <div class="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between" style="border-color:var(--border-light);">
+    <div id="restore-database" class="flex scroll-mt-6 flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between" style="border-color:var(--border-light);">
         <div>
             <p class="text-sm font-medium" style="color:var(--text);">Restore Database</p>
-            <p class="text-xs" style="color:var(--text-secondary);">Upload a .db or .sqlite file to replace all current data.</p>
+        <p class="text-xs" style="color:var(--danger);">This replaces all current data. Download a backup first if you may need to undo this.</p>
         </div>
-        <form method="POST" action="/settings/restore" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <form method="POST" action="/settings/restore" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center" onsubmit="return confirm('Restore this database and replace all current Expenzz data? This cannot be undone.');">
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
             <input type="file" name="db_file" accept=".db,.sqlite" required
                 class="text-sm file:mr-3 file:rounded-lg file:border-0 file:px-3 file:py-2 file:text-sm file:font-semibold file:cursor-pointer" style="color:var(--text-secondary);">
