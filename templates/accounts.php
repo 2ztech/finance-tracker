@@ -54,6 +54,7 @@ ob_start();
                 <div>
                     <p class="text-base font-semibold" style="color:var(--text);">
                         <?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?>
+                        <?php if ((int) ($a['is_primary'] ?? 0) === 1): ?><span class="ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold" style="background:var(--success-soft);color:var(--income);">MAIN</span><?php endif; ?>
                         <?php if ($isActive): ?><span class="ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold" style="background:var(--accent-soft);color:var(--accent);">ACTIVE</span><?php endif; ?>
                         <?php if ((int) $a['archived'] === 1): ?><span class="ml-1 rounded px-1.5 py-0.5 text-[10px]" style="background:var(--bg-hover);color:var(--text-muted);">ARCHIVED</span><?php endif; ?>
                     </p>
@@ -169,9 +170,14 @@ ob_start();
             </div>
 
             <!-- Savings-only -->
-            <div class="acc-savings">
-                <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Tracking Start Month</label>
-                <input type="month" name="start_month" id="acc_start" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+            <div class="acc-savings space-y-3">
+                <div>
+                    <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Tracking Start Month</label>
+                    <input type="month" name="start_month" id="acc_start" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                </div>
+                <label class="flex items-center gap-2 text-sm" style="color:var(--text-secondary);">
+                    <input type="checkbox" name="is_primary" id="acc_primary" class="h-4 w-4" style="accent-color:var(--accent);"> Main account (daily use) — drives the end-of-month forecast
+                </label>
             </div>
 
             <!-- Liability fields -->
@@ -253,6 +259,7 @@ function openAccountForm() {
     document.getElementById('acc_limit').value = '';
     document.getElementById('acc_partial').checked = false;
     document.getElementById('acc_archived').checked = false;
+    document.getElementById('acc_primary').checked = false;
     toggleAccountFields();
     showModal();
 }
@@ -284,6 +291,7 @@ function editAccount(a) {
     document.getElementById('acc_limit').value = a.credit_limit || '';
     document.getElementById('acc_partial').checked = String(a.allow_partial) === '1';
     document.getElementById('acc_archived').checked = String(a.archived) === '1';
+    document.getElementById('acc_primary').checked = String(a.is_primary) === '1';
     toggleAccountFields();
     showModal();
 }

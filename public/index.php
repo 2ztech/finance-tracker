@@ -297,6 +297,7 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         'opening_balance'=> (float) ($_POST['opening_balance'] ?? 0),
         'start_month'    => ($_POST['start_month'] ?? '') !== '' ? $_POST['start_month'] : null,
         'archived'       => isset($_POST['archived']) ? 1 : 0,
+        'is_primary'     => ($kind === 'savings' && isset($_POST['is_primary'])) ? 1 : 0,
         'sort_order'     => (int) ($_POST['sort_order'] ?? 0),
     ];
     if ($data['name'] === '') {

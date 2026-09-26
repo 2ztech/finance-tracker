@@ -212,6 +212,10 @@ final class Database
             "ALTER TABLE transactions ADD COLUMN plan_id INTEGER",
             "ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER",
             "ALTER TABLE quick_templates ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
+            "ALTER TABLE commitments ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE transactions ADD COLUMN commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL",
+            "ALTER TABLE transactions ADD COLUMN commitment_period TEXT",
+            "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0",
         ];
 
         foreach ($alterations as $alter) {
@@ -233,10 +237,40 @@ final class Database
             $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('category_icon_defaults_seeded', '1')")->execute();
         }
 
+        // One-time link of legacy "[Auto] <name>" transactions to their
+        // commitment so edits propagate by id and months can be de-duplicated.
+        $linkedFlag = $db->query("SELECT value FROM settings WHERE key = 'commitment_link_backfill'")->fetchColumn();
+        if ($linkedFlag === false) {
+            $byName = [];
+            foreach ($db->query("SELECT id, name FROM commitments")->fetchAll(PDO::FETCH_ASSOC) as $c) {
+                $byName[trim((string) $c['name'])][] = (int) $c['id'];
+            }
+            $seen = [];
+            $update = $db->prepare("UPDATE transactions SET commitment_id = ?, commitment_period = ? WHERE id = ?");
+            $rows = $db->query("SELECT id, description, date FROM transactions WHERE description LIKE '[Auto] %'")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $row) {
+                $name = substr((string) $row['description'], strlen('[Auto] '));
+                if (!isset($byName[$name])) {
+                    continue;
+                }
+                $cid = $byName[$name][0];
+                $period = substr((string) $row['date'], 0, 7);
+                $key = $cid . '|' . $period;
+                if (isset($seen[$key])) {
+                    continue; // leave extras unlinked; the unique index would reject them
+                }
+                $seen[$key] = true;
+                $update->execute([$cid, $period, (int) $row['id']]);
+            }
+            $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('commitment_link_backfill', '1')")->execute();
+        }
+
         // Indexes that depend on columns added above must run after the ALTERs.
         foreach ([
             "CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)",
             "CREATE INDEX IF NOT EXISTS idx_commitments_account ON commitments(account_id)",
+            "CREATE INDEX IF NOT EXISTS idx_transactions_commitment ON transactions(commitment_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_commitment_period ON transactions(commitment_id, commitment_period) WHERE commitment_period IS NOT NULL",
         ] as $index) {
             try {
                 $db->exec($index);

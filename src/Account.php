@@ -52,7 +52,11 @@ final class Account
             (int) ($d['sort_order'] ?? 0),
             date('Y-m-d H:i:s'),
         ]);
-        return (int) $db->lastInsertId();
+        $id = (int) $db->lastInsertId();
+        if (!empty($d['is_primary'])) {
+            self::setPrimary($id);
+        }
+        return $id;
     }
 
     public static function update(int $id, array $d): bool
@@ -67,7 +71,7 @@ final class Account
                 opening_balance = ?, start_month = ?, archived = ?, sort_order = ?
             WHERE id = ?
         ");
-        return $stmt->execute([
+        $ok = $stmt->execute([
             $d['name'],
             $d['kind'],
             $d['color_hex'] ?? '#4f6ef7',
@@ -90,6 +94,25 @@ final class Account
             (int) ($d['sort_order'] ?? 0),
             $id,
         ]);
+        if ($ok && !empty($d['is_primary'])) {
+            self::setPrimary($id);
+        }
+        return $ok;
+    }
+
+    /** Mark one savings account as the daily/main account (single-primary). */
+    public static function setPrimary(int $id): void
+    {
+        $db = Database::getConnection();
+        $db->prepare("UPDATE accounts SET is_primary = 0 WHERE id <> ?")->execute([$id]);
+        $db->prepare("UPDATE accounts SET is_primary = 1 WHERE id = ?")->execute([$id]);
+    }
+
+    public static function primaryId(): ?int
+    {
+        $db = Database::getConnection();
+        $row = $db->query("SELECT id FROM accounts WHERE archived = 0 AND is_primary = 1 LIMIT 1")->fetchColumn();
+        return $row ? (int) $row : null;
     }
 
     public static function delete(int $id): bool

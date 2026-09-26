@@ -82,6 +82,15 @@ if ($activeAccountId) {
     // Recurring expense commitments are forecasts/reminders, not bill-table rows.
     // Include their next due occurrence for the selected account, including savings accounts.
     $commitments = Expense::getCommitments($activeAccountId);
+
+    // Months already posted for a schedule are hidden from "Upcoming".
+    $postedStmt = $db->prepare("SELECT commitment_id, commitment_period FROM transactions WHERE account_id = ? AND commitment_period IS NOT NULL");
+    $postedStmt->execute([$activeAccountId]);
+    $postedPeriods = [];
+    foreach ($postedStmt->fetchAll() as $pr) {
+        $postedPeriods[(int) $pr['commitment_id'] . '|' . $pr['commitment_period']] = true;
+    }
+
     $today = new DateTimeImmutable($upcomingStart);
     $monthStart = $today->modify('first day of this month');
     for ($offset = 0; $offset <= 2; $offset++) {
@@ -95,6 +104,7 @@ if ($activeAccountId) {
             if ($dueDateString < $upcomingStart || $dueDateString > $upcomingEnd) continue;
             if (!empty($commitment['start_date']) && $dueDateString < $commitment['start_date']) continue;
             if (!empty($commitment['end_date']) && $dueDateString > $commitment['end_date']) continue;
+            if (isset($postedPeriods[(int) $commitment['id'] . '|' . substr($dueDateString, 0, 7)])) continue;
             $upcoming[] = [
                 'account_id' => $activeAccountId,
                 'due_date' => $dueDateString,
@@ -209,6 +219,22 @@ ob_start();
         <a aria-label="Next month" href="?month=<?= htmlspecialchars((string)$nextMonth, ENT_QUOTES, 'UTF-8') ?>" class="rounded-md px-3 py-2" style="color:var(--text-secondary);">›</a>
     </div>
 </div>
+
+<?php $primaryId = Account::primaryId(); ?>
+<?php if ($primaryId !== null): $primaryAccount = Account::find($primaryId); $projectedEOM = Expense::projectedEndOfMonth($primaryId, $month, $year); ?>
+<section class="rounded-xl border p-4" aria-label="Projected end of month" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+    <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+            <p class="text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted);">Projected end of month</p>
+            <p class="mt-1 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($projectedEOM, 2) ?></p>
+            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)($primaryAccount['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> · current RM <?= number_format(Account::balance($primaryId), 2) ?> plus remaining recurring this month</p>
+        </div>
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background:var(--accent-soft);color:var(--accent);">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 17l5-5 4 3 7-8M15 7h5v5"/></svg>
+        </span>
+    </div>
+</section>
+<?php endif; ?>
 
 <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Financial summary">
     <?php

@@ -210,62 +210,80 @@ final class Expense
         return $result;
     }
 
-    public static function getUnpaidRecurring(string $type, string $month, string $year): float
+    /**
+     * Recurring amount still expected for a month: active schedules for the
+     * type minus anything already posted against them for that period.
+     */
+    public static function getUnpaidRecurring(string $type, string $month, string $year, ?int $accountId = null): float
     {
         $db = Database::getConnection();
-
-        $stmt1 = $db->prepare("SELECT * FROM commitments WHERE type = ?");
-        $stmt1->execute([$type]);
-        $commitments = $stmt1->fetchAll();
-
-        $totalComm = 0.0;
         $monthKey = sprintf('%04d-%02d', (int) $year, (int) $month);
-        foreach ($commitments as $c) {
-            $dueDateStr = self::clampedDueDate((int) $year, (int) $month, (int) $c['due_date_day']);
 
-            // Start/end define which MONTHS the item is active; the day-of-month
-            // in those dates is intentionally ignored (the due day governs that).
-            $valid = true;
-            if (!empty($c['start_date']) && $monthKey < substr($c['start_date'], 0, 7)) {
-                $valid = false;
-            }
-            if (!empty($c['end_date']) && $monthKey > substr($c['end_date'], 0, 7)) {
-                $valid = false;
-            }
-
-            if ($valid) {
-                $totalComm += (float) $c['amount'];
-            }
+        $sql = "SELECT id, amount, start_date, end_date FROM commitments WHERE type = ? AND archived = 0";
+        $params = [$type];
+        if ($accountId !== null) {
+            $sql .= " AND account_id = ?";
+            $params[] = $accountId;
         }
-        $totalComm = round($totalComm, 2);
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
 
-        $startDate = "$year-$month-01";
-        $endDate = date("Y-m-t", strtotime($startDate));
+        // Start/end define which MONTHS the item is active; the day-of-month
+        // in those dates is intentionally ignored (the due day governs that).
+        $ids = [];
+        $total = 0.0;
+        foreach ($stmt->fetchAll() as $c) {
+            if (!empty($c['start_date']) && $monthKey < substr((string) $c['start_date'], 0, 7)) continue;
+            if (!empty($c['end_date']) && $monthKey > substr((string) $c['end_date'], 0, 7)) continue;
+            $total += (float) $c['amount'];
+            $ids[] = (int) $c['id'];
+        }
+        $total = round($total, 2);
 
-        $stmt2 = $db->prepare("SELECT ROUND(SUM(amount), 2) FROM transactions WHERE type = ? AND description LIKE '[Auto] %' AND date >= ? AND date <= ?");
-        $stmt2->execute([$type, $startDate, $endDate]);
-        $paidComm = round((float) $stmt2->fetchColumn(), 2);
+        $posted = 0.0;
+        if ($ids !== []) {
+            $place = implode(',', array_fill(0, count($ids), '?'));
+            $p = $db->prepare("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE commitment_id IN ($place) AND commitment_period = ?");
+            $p->execute([...$ids, $monthKey]);
+            $posted = round((float) $p->fetchColumn(), 2);
+        }
 
-        $unpaid = round($totalComm - $paidComm, 2);
-        return max($unpaid, 0.0);
+        return max(round($total - $posted, 2), 0.0);
     }
 
-    public static function getEOMProjection(string $month, string $year): float
+    /**
+     * Projected end-of-month balance for an account: its current balance plus
+     * recurring income still expected this month minus recurring expense.
+     */
+    public static function projectedEndOfMonth(?int $accountId, ?string $month = null, ?string $year = null): float
     {
-        $cacheKey = "$year-$month";
+        if ($accountId === null) {
+            return 0.0;
+        }
+        $month = $month ?? date('m');
+        $year = $year ?? date('Y');
+        $balance = Account::balance($accountId);
+        $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
+        $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
+        return round($balance + $unpaidInc - $unpaidExp, 2);
+    }
+
+    public static function getEOMProjection(string $month, string $year, ?int $accountId = null): float
+    {
+        $cacheKey = "$year-$month-" . ($accountId ?? 'all');
         if (isset(self::$eomProjectionCache[$cacheKey])) {
             return self::$eomProjectionCache[$cacheKey];
         }
 
-        $requested = $cacheKey;
+        $requested = "$year-$month";
         $trackingStart = Settings::get('tracking_start_month', date('Y-m'));
 
         if ($requested <= $trackingStart) {
             $startBal = self::getStartingBalanceForMonth($month, $year);
             $allInc = self::getTotalIncome($month, $year);
             $allExp = self::getTotalExpense($month, $year);
-            $unpaidInc = self::getUnpaidRecurring('income', $month, $year);
-            $unpaidExp = self::getUnpaidRecurring('expense', $month, $year);
+            $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
+            $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
 
             $result = round($startBal + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
             self::$eomProjectionCache[$cacheKey] = $result;
@@ -275,12 +293,12 @@ final class Expense
         $prevDate = date('Y-m', strtotime("$requested-01 -1 month"));
         [$prevYear, $prevMonth] = explode('-', $prevDate);
 
-        $prevEOM = self::getEOMProjection($prevMonth, $prevYear);
+        $prevEOM = self::getEOMProjection($prevMonth, $prevYear, $accountId);
 
         $allInc = self::getTotalIncome($month, $year);
         $allExp = self::getTotalExpense($month, $year);
-        $unpaidInc = self::getUnpaidRecurring('income', $month, $year);
-        $unpaidExp = self::getUnpaidRecurring('expense', $month, $year);
+        $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
+        $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
 
         $result = round($prevEOM + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
         self::$eomProjectionCache[$cacheKey] = $result;
@@ -291,138 +309,153 @@ final class Expense
 
     public static function getCommitments(?int $accountId = null): array
     {
+        return self::commitmentsQuery($accountId, 0);
+    }
+
+    public static function getArchivedCommitments(?int $accountId = null): array
+    {
+        return self::commitmentsQuery($accountId, 1);
+    }
+
+    private static function commitmentsQuery(?int $accountId, int $archived): array
+    {
         $db = Database::getConnection();
-        if ($accountId !== null) {
-            $stmt = $db->prepare("
-                SELECT c.*, cat.name AS category_name, cat.color_hex 
+        $sql = "SELECT c.*, cat.name AS category_name, cat.color_hex
                 FROM commitments c
                 LEFT JOIN categories cat ON c.category_id = cat.id
-                WHERE c.account_id = ?
-                ORDER BY c.due_date_day
-            ");
-            $stmt->execute([$accountId]);
-            return $stmt->fetchAll();
+                WHERE c.archived = ?";
+        $params = [$archived];
+        if ($accountId !== null) {
+            $sql .= " AND c.account_id = ?";
+            $params[] = $accountId;
         }
-        $stmt = $db->query("
-            SELECT c.*, cat.name AS category_name, cat.color_hex 
-            FROM commitments c
-            LEFT JOIN categories cat ON c.category_id = cat.id
-            ORDER BY c.due_date_day
-        ");
+        $sql .= " ORDER BY c.due_date_day, c.id";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
     public static function getCommitmentsRemaining(): float
     {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments WHERE type = 'expense'");
+        $stmt = $db->query("SELECT ROUND(SUM(amount), 2) FROM commitments WHERE type = 'expense' AND archived = 0");
         return round((float) $stmt->fetchColumn(), 2);
     }
 
     public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId]);
-        if ($success) {
-            self::syncAutoTransactions(null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date, $accountId);
-            if ($category_id !== null) {
-                self::syncTransactionsCategory($name, $category_id);
-            }
-        }
-        return $success;
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date, account_id, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)");
+        return $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId]);
     }
 
     public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
     {
         $db = Database::getConnection();
 
-        $prev = $db->prepare("SELECT name FROM commitments WHERE id = ?");
-        $prev->execute([$id]);
-        $oldName = $prev->fetchColumn();
-
         $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ?, account_id = ? WHERE id = ?");
         $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId, $id]);
 
         if ($success) {
-            self::syncAutoTransactions(is_string($oldName) ? $oldName : null, $name, $type, $amount, $category_id, $due_date_day, $start_date, $end_date, $accountId);
-            if ($category_id !== null) {
-                self::syncTransactionsCategory($name, $category_id);
-            }
+            // Propagate definitions to every auto-generated transaction by id.
+            // Dates of already-posted rows are intentionally left untouched so
+            // the ledger keeps the real posting date.
+            self::propagateCommitmentToTransactions($id, $name, $type, $amount, $category_id, $accountId);
         }
         return $success;
     }
 
     /**
-     * Propagate a commitment's definitions (amount, type, category, due day,
-     * rename, and active month range) onto the auto-transactions it has already
-     * generated. Rows that fall outside the new start/end months are removed.
-     * Start/end are treated as month boundaries; the due day governs the day.
+     * Propagate a schedule's definitions (name, amount, type, category and
+     * account) onto every transaction it generated, matched by commitment_id.
+     * This is why category edits now reflect in the ledger. Posted dates are
+     * left untouched so the ledger keeps the real posting date.
      */
-    private static function syncAutoTransactions(?string $oldName, string $newName, string $type, float $amount, ?int $categoryId, int $dueDay, ?string $startDate = null, ?string $endDate = null, ?int $accountId = null): void
+    private static function propagateCommitmentToTransactions(int $id, string $name, string $type, float $amount, ?int $categoryId, ?int $accountId): void
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("UPDATE transactions SET description = ?, amount = ?, type = ?, category_id = ?, account_id = ? WHERE commitment_id = ?");
+        $stmt->execute(['[Auto] ' . $name, $amount, $type, $categoryId, $accountId, $id]);
+    }
+
+    /** Stop future occurrences but keep the schedule and all history. */
+    public static function archiveCommitment(int $id): bool
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("UPDATE commitments SET archived = 1 WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
+    public static function restoreCommitment(int $id): bool
     {
         $db = Database::getConnection();
 
-        if ($oldName !== null && $oldName !== '' && $oldName !== $newName) {
-            $rename = $db->prepare("UPDATE transactions SET description = ? WHERE description = ?");
-            $rename->execute(['[Auto] ' . $newName, '[Auto] ' . $oldName]);
+        // An auto-archived (expired) schedule must also lose its past end date,
+        // otherwise the next run would immediately re-archive it.
+        $end = $db->prepare("SELECT end_date FROM commitments WHERE id = ?");
+        $end->execute([$id]);
+        $endDate = $end->fetchColumn();
+        if (is_string($endDate) && $endDate !== '' && substr($endDate, 0, 7) < date('Y-m')) {
+            $stmt = $db->prepare("UPDATE commitments SET archived = 0, end_date = NULL WHERE id = ?");
+            return $stmt->execute([$id]);
         }
 
-        $select = $db->prepare("SELECT id, date FROM transactions WHERE description = ?");
-        $select->execute(['[Auto] ' . $newName]);
-        $rows = $select->fetchAll();
-
-        $update = $db->prepare("UPDATE transactions SET amount = ?, type = ?, category_id = ?, date = ?, account_id = ? WHERE id = ?");
-        $delete = $db->prepare("DELETE FROM transactions WHERE id = ?");
-
-        $startMonth = ($startDate !== null && $startDate !== '') ? substr($startDate, 0, 7) : null;
-        $endMonth = ($endDate !== null && $endDate !== '') ? substr($endDate, 0, 7) : null;
-
-        foreach ($rows as $row) {
-            $parts = explode('-', (string) $row['date']);
-            if (count($parts) !== 3) {
-                continue;
-            }
-            $y = (int) $parts[0];
-            $m = (int) $parts[1];
-            $rowMonth = sprintf('%04d-%02d', $y, $m);
-
-            if (($startMonth !== null && $rowMonth < $startMonth) || ($endMonth !== null && $rowMonth > $endMonth)) {
-                $delete->execute([$row['id']]);
-                continue;
-            }
-
-            $update->execute([$amount, $type, $categoryId, self::clampedDueDate($y, $m, $dueDay), $accountId, $row['id']]);
-        }
+        $stmt = $db->prepare("UPDATE commitments SET archived = 0 WHERE id = ?");
+        return $stmt->execute([$id]);
     }
 
-    private static function syncTransactionsCategory(string $name, int $categoryId): void
-    {
-        $db = Database::getConnection();
-        $exactName = $name;
-        $autoName = "[Auto] " . $name;
-
-        $stmt = $db->prepare("UPDATE transactions SET category_id = ? WHERE (description = ? OR description = ?) AND (category_id IS NULL OR category_id = 0 OR category_id = '')");
-        $stmt->execute([$categoryId, $exactName, $autoName]);
-    }
-
+    /**
+     * Hard-delete the schedule. Generated transactions are preserved; their
+     * commitment_id is cleared by the foreign key (ON DELETE SET NULL).
+     */
     public static function deleteCommitment(int $id): bool
     {
         $db = Database::getConnection();
-
-        $prev = $db->prepare("SELECT name FROM commitments WHERE id = ?");
-        $prev->execute([$id]);
-        $name = $prev->fetchColumn();
-
-        if (is_string($name) && $name !== '') {
-            // Remove the auto-transactions this item generated so the ledger
-            // no longer reflects a recurring item that has been deleted.
-            $del = $db->prepare("DELETE FROM transactions WHERE description = ?");
-            $del->execute(['[Auto] ' . $name]);
-        }
-
         $stmt = $db->prepare("DELETE FROM commitments WHERE id = ?");
         return $stmt->execute([$id]);
+    }
+
+    /** Whether the current month has already been posted for this schedule. */
+    public static function currentPeriodPosted(int $id): bool
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
+        $stmt->execute([$id, date('Y-m')]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Post this month's occurrence now (early). Uses today as the actual date;
+     * the period tag stops the scheduler from double-posting later.
+     */
+    public static function postCommitmentNow(int $id): bool
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT * FROM commitments WHERE id = ? AND archived = 0");
+        $stmt->execute([$id]);
+        $c = $stmt->fetch();
+        if (!$c) {
+            return false;
+        }
+
+        $period = date('Y-m');
+        $check = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
+        $check->execute([$id, $period]);
+        if ((int) $check->fetchColumn() > 0) {
+            return false;
+        }
+
+        $ins = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id, commitment_id, commitment_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        return $ins->execute([
+            $c['category_id'],
+            $c['amount'],
+            $c['type'] ?? 'expense',
+            '[Auto] ' . $c['name'],
+            date('Y-m-d'),
+            $c['account_id'],
+            $id,
+            $period,
+        ]);
     }
 
     /**
@@ -436,70 +469,96 @@ final class Expense
         return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
 
-    public static function processDueCommitments(bool $force = false): void
+    /**
+     * Post occurrences that have become due. By default this is FORWARD-ONLY:
+     * only the current month can post, so normal runs and edits never inject
+     * backdated transactions. Pass $backfillPast = true (only when a schedule is
+     * first created with a past start date) to build history from the start.
+     */
+    public static function processDueCommitments(bool $force = false, bool $backfillPast = false): void
     {
         $todayStr = date('Y-m-d');
+        $db = Database::getConnection();
+        $currentMonth = date('Y-m');
+
         $lastProcessed = Settings::get('last_commitment_process', '');
         if (!$force && $lastProcessed === $todayStr) {
+            // Posting is gated to once a day, but expiry must still be applied
+            // so ended schedules move to the archive on the next page load.
+            self::archiveExpiredCommitments($db, $currentMonth);
             return;
         }
 
-        $db = Database::getConnection();
+        // Archived schedules never post; everything else is month-driven.
+        $commitments = $db->query("SELECT * FROM commitments WHERE archived = 0")->fetchAll();
 
-        $stmt = $db->query("SELECT * FROM commitments");
-        $commitments = $stmt->fetchAll();
-
-        $checkStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE description = ? AND type = ? AND date = ?");
-        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)");
+        // A month is "covered" when a transaction exists for (commitment, period).
+        // This is the source of truth: delete a posted transaction and the month
+        // becomes uncovered again, so the next run re-posts it.
+        $postedStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
+        $legacyStmt = $db->prepare("SELECT id FROM transactions WHERE description = ? AND type = ? AND date = ?");
+        $linkStmt = $db->prepare("UPDATE transactions SET commitment_id = ?, commitment_period = ? WHERE id = ?");
+        $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id, commitment_id, commitment_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
 
         foreach ($commitments as $c) {
-            $desc = "[Auto] " . $c['name'];
+            $desc = '[Auto] ' . $c['name'];
             $type = $c['type'] ?? 'expense';
             $dueDay = (int) $c['due_date_day'];
+            $cid = (int) $c['id'];
 
-            if (!empty($c['start_date'])) {
-                $startMonth = new DateTime($c['start_date']);
-                $startMonth->modify('first day of this month');
+            $start = !empty($c['start_date']) ? new DateTime($c['start_date']) : new DateTime($todayStr);
+            $start->modify('first day of this month');
+            if (!$backfillPast) {
+                // Forward-only: never reach back before the current month.
+                $curMonthStart = new DateTime($todayStr);
+                $curMonthStart->modify('first day of this month');
+                if ($start < $curMonthStart) {
+                    $start = $curMonthStart;
+                }
+            }
+            $endLimitStr = (!empty($c['end_date']) && $c['end_date'] < $todayStr) ? $c['end_date'] : $todayStr;
+            $end = new DateTime($endLimitStr);
+            $end->modify('last day of this month');
 
-                $endLimitStr = (!empty($c['end_date']) && $c['end_date'] < $todayStr) ? $c['end_date'] : $todayStr;
-                $endMonth = new DateTime($endLimitStr);
-                $endMonth->modify('last day of this month');
+            $currentIter = clone $start;
+            while ($currentIter <= $end) {
+                $iterYear = (int) $currentIter->format('Y');
+                $iterMonth = (int) $currentIter->format('m');
+                $dueDateStr = self::clampedDueDate($iterYear, $iterMonth, $dueDay);
+                $period = substr($dueDateStr, 0, 7);
 
-                $currentIter = clone $startMonth;
-                while ($currentIter <= $endMonth) {
-                    $iterYear = (int) $currentIter->format('Y');
-                    $iterMonth = (int) $currentIter->format('m');
-                    $dueDateStr = self::clampedDueDate($iterYear, $iterMonth, $dueDay);
-
-                    if ($dueDateStr <= $todayStr) {
-                        $dueMonth = substr($dueDateStr, 0, 7);
-                        $afterStart = empty($c['start_date']) || $dueMonth >= substr($c['start_date'], 0, 7);
-                        $beforeEnd = empty($c['end_date']) || $dueMonth <= substr($c['end_date'], 0, 7);
-                        if ($afterStart && $beforeEnd) {
-                            $checkStmt->execute([$desc, $type, $dueDateStr]);
-                            if ($checkStmt->fetchColumn() == 0) {
-                                $insertStmt->execute([$c["category_id"], $c["amount"], $type, $desc, $dueDateStr, $c["account_id"]]);
+                if ($dueDateStr <= $todayStr) {
+                    $afterStart = empty($c['start_date']) || $period >= substr((string) $c['start_date'], 0, 7);
+                    $beforeEnd = empty($c['end_date']) || $period <= substr((string) $c['end_date'], 0, 7);
+                    if ($afterStart && $beforeEnd) {
+                        $postedStmt->execute([$cid, $period]);
+                        if ((int) $postedStmt->fetchColumn() === 0) {
+                            // Adopt a legacy "[Auto]" row for this month instead of
+                            // inserting a duplicate that predates the id link.
+                            $legacyStmt->execute([$desc, $type, $dueDateStr]);
+                            $existingId = $legacyStmt->fetchColumn();
+                            if ($existingId) {
+                                $linkStmt->execute([$cid, $period, (int) $existingId]);
+                            } else {
+                                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr, $c['account_id'], $cid, $period]);
                             }
                         }
                     }
-                    $currentIter->modify('+1 month');
                 }
-            } else {
-                $dueDateStr = self::clampedDueDate((int) date('Y'), (int) date('m'), $dueDay);
-
-                if ($dueDateStr <= $todayStr) {
-                    $dueMonth = substr($dueDateStr, 0, 7);
-                    $beforeEnd = empty($c['end_date']) || $dueMonth <= substr($c['end_date'], 0, 7);
-                    if ($beforeEnd) {
-                        $checkStmt->execute([$desc, $type, $dueDateStr]);
-                        if ($checkStmt->fetchColumn() == 0) {
-                            $insertStmt->execute([$c["category_id"], $c["amount"], $type, $desc, $dueDateStr, $c["account_id"]]);
-                        }
-                    }
-                }
+                $currentIter->modify('+1 month');
             }
         }
 
+        // Retire schedules whose end month has passed. Runs after posting so a
+        // deliberately backdated/ended schedule can still build its history first.
+        self::archiveExpiredCommitments($db, $currentMonth);
+
         Settings::set('last_commitment_process', $todayStr);
+    }
+
+    private static function archiveExpiredCommitments(\PDO $db, string $currentMonth): void
+    {
+        $stmt = $db->prepare("UPDATE commitments SET archived = 1 WHERE archived = 0 AND end_date IS NOT NULL AND substr(end_date, 1, 7) < ?");
+        $stmt->execute([$currentMonth]);
     }
 }
