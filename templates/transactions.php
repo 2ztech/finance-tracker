@@ -569,8 +569,15 @@ var accountKinds = <?= json_encode(array_column($accounts, 'kind', 'id'), JSON_H
 function onAddAccountChange() {
     var sel = document.getElementById('add_account_id');
     var kind = accountKinds[sel.value] || 'savings';
+    var isLiab = kind !== 'savings';
     var block = document.getElementById('repayBlock');
     if (block) block.classList.toggle('hidden', kind !== 'paylater');
+    // Keep the Type labels consistent with the selected account's kind.
+    var typeSel = document.getElementById('addRecordForm').querySelector('select[name="type"]');
+    if (typeSel && typeSel.options.length >= 2) {
+        typeSel.options[0].text = isLiab ? 'Purchase' : 'Expense';
+        typeSel.options[1].text = isLiab ? 'Refund / Credit' : 'Income';
+    }
     toggleRepay();
 }
 function toggleRepay() {
@@ -593,7 +600,7 @@ function updateRepayHint() {
 }
 document.getElementById('addRecordForm').querySelector('input[name="amount"]').addEventListener('input', updateRepayHint);
 var _monthsEl = document.getElementById('months'); if (_monthsEl) _monthsEl.addEventListener('input', updateRepayHint);
-document.addEventListener('DOMContentLoaded', function(){ toggleRepay(); });
+document.addEventListener('DOMContentLoaded', function(){ onAddAccountChange(); });
 
 function toggleTransferForm(){ var f=document.getElementById('transferForm'); if(f) f.classList.toggle('hidden'); }
 function openEdit(id, date, catId, desc, amount, type, accountId) {
