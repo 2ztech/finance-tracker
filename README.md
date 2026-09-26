@@ -75,6 +75,32 @@ later from Settings.
 
 Your entire database lives in `data/finance.db`. When using Docker, mount the data directory as a volume to survive container rebuilds. Backup via the Settings page or just copy the file.
 
+## Testing / QA
+
+Automated QA uses **PHPUnit** for business logic and **Playwright** for browser
+E2E. All tests run against isolated databases and never touch `data/finance.db`.
+
+```bash
+npm install                 # one-time: installs Playwright test runner
+npm run build:css           # rebuild Tailwind (needed before E2E)
+
+npm test                    # full suite: backend + E2E
+npm run test:backend        # PHPUnit only (tests/Unit)
+npm run test:e2e            # Playwright, all projects (desktop + mobile)
+npm run test:e2e:mobile     # Playwright mobile project only
+npm run lint:php            # php -l across src/public/templates/tests
+npm run test:db:reset       # reset the isolated E2E database
+npm run qa:serve            # run the app against the isolated test DB
+```
+
+- Backend tests live in `tests/Unit/` (framework: `tools/phpunit.phar`).
+- E2E tests live in `tests/e2e/` (config: `playwright.config.js`).
+- Test databases are created under `data/test/` and the system temp dir.
+- See `QA/TEST-PLAN.md` and `QA/TEST-REPORT.md`.
+
+CI runs the whole suite on every push and pull request
+(`.github/workflows/qa.yml`).
+
 ## Contributing
 
 Issues and pull requests welcome.

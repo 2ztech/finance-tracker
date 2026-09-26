@@ -65,13 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             -webkit-font-smoothing: antialiased;
         }
     </style>
-
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: { extend: { fontFamily: { sans: ['Outfit', 'sans-serif'] } } },
-        }
-    </script>
 </head>
 <body class="flex min-h-screen items-center justify-center p-4">
 

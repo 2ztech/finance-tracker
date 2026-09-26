@@ -103,6 +103,6 @@ final class Backup
 
     public static function dbPath(): string
     {
-        return dirname(__DIR__) . '/data/finance.db';
+        return Database::path();
     }
 }

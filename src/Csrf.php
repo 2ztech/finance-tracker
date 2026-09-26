@@ -12,9 +12,22 @@ final class Csrf
         return $_SESSION['csrf_token'];
     }
 
+    public static function isValid(): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            return true;
+        }
+        $sessionToken = $_SESSION['csrf_token'] ?? null;
+        if ($sessionToken === null) {
+            return false;
+        }
+        $formToken = $_POST['csrf_token'] ?? '';
+        return hash_equals($sessionToken, $formToken);
+    }
+
     public static function validate(): void
     {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
             return;
         }
 

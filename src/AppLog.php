@@ -27,6 +27,10 @@ final class AppLog
 
     public static function dir(): string
     {
+        $env = getenv('FINANCE_LOG_DIR');
+        if ($env !== false && $env !== '') {
+            return $env;
+        }
         return dirname(__DIR__) . '/data/logs';
     }
 

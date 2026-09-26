@@ -5,15 +5,38 @@ declare(strict_types=1);
 final class Database
 {
     private static ?PDO $instance = null;
-    private static string $dbPath = __DIR__ . '/../data/finance.db';
+    private static ?string $dbPath = null;
+
+    /**
+     * Resolve the SQLite path. Production keeps using data/finance.db; the
+     * FINANCE_DB_PATH env var lets the automated test suite point at an
+     * isolated database without touching real data.
+     */
+    public static function path(): string
+    {
+        if (self::$dbPath === null) {
+            $env = getenv('FINANCE_DB_PATH');
+            self::$dbPath = ($env !== false && $env !== '')
+                ? $env
+                : dirname(__DIR__) . '/data/finance.db';
+        }
+        return self::$dbPath;
+    }
+
+    /** Test helper: drop the cached connection/path so the next call reconnects. */
+    public static function reset(): void
+    {
+        self::$instance = null;
+        self::$dbPath = null;
+    }
 
     public static function getConnection(): PDO
     {
         if (self::$instance === null) {
-            $dsn = 'sqlite:' . self::$dbPath;
+            $dsn = 'sqlite:' . self::path();
 
             try {
-                $dir = dirname(self::$dbPath);
+                $dir = dirname(self::path());
                 if (!is_dir($dir)) {
                     mkdir($dir, 0o777, true);
                 }

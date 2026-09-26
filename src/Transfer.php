@@ -6,6 +6,14 @@ final class Transfer
 {
     public static function create(int $from, int $to, float $amount, string $date, string $description, string $kind = 'internal'): int
     {
+        // Reject invalid transfers at the model layer as well as in the route.
+        if ($from <= 0 || $to <= 0 || $from === $to || $amount <= 0) {
+            return 0;
+        }
+        if (Account::find($from) === null || Account::find($to) === null) {
+            return 0;
+        }
+
         $db = Database::getConnection();
         $stmt = $db->prepare("
             INSERT INTO transfers (date, from_account_id, to_account_id, amount, description, kind, created_at)

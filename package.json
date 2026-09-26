@@ -5,7 +5,13 @@
   "main": "tailwind.config.js",
   "scripts": {
     "build:css": "tailwindcss -i ./public/tailwind.css -o ./public/tailwind.min.css --minify",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint:php": "bash tools/php-lint.sh",
+    "test": "npm run test:backend && npm run test:e2e",
+    "test:backend": "php tools/phpunit.phar",
+    "test:e2e": "playwright test",
+    "test:e2e:mobile": "playwright test --project=mobile",
+    "test:db:reset": "FINANCE_DB_PATH=data/test/e2e.db php tests/e2e/reset-db.php",
+    "qa:serve": "FINANCE_DB_PATH=data/test/e2e.db php -S 127.0.0.1:8099 -t public"
   },
   "repository": {
     "type": "git",
@@ -20,6 +26,7 @@
   },
   "homepage": "https://github.com/2ztech/finance-tracker#readme",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "tailwindcss": "^3.4.19"
   }
 }

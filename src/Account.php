@@ -85,6 +85,13 @@ final class Account
     public static function delete(int $id): bool
     {
         $db = Database::getConnection();
+        // Refuse to delete an account that still has transactions (defence in
+        // depth; the Accounts page enforces the same rule).
+        $stmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE account_id = ?");
+        $stmt->execute([$id]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            return false;
+        }
         $stmt = $db->prepare("DELETE FROM accounts WHERE id = ?");
         return $stmt->execute([$id]);
     }

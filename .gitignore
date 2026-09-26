@@ -3,3 +3,9 @@ data/*.db.bak
 data/backups/
 node_modules/
 data/logs/
+.phpunit.cache/
+test-results/
+QA/playwright-report/
+QA/screenshots/
+data/test/
+public/data/
