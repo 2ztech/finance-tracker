@@ -106,16 +106,22 @@ final class PaylaterPlan
         $insertTxn->execute([$categoryId > 0 ? $categoryId : null, $purchaseAmount, $description, $purchaseDate, $accountId]);
         $purchaseTxnId = (int) $db->lastInsertId();
 
+        $financingTxnId = null;
         if ($interest > 0) {
             $finCat = self::financingCategoryId();
             $insertTxn->execute([$finCat, $interest, $description . ' (financing)', $purchaseDate, $accountId]);
+            $financingTxnId = (int) $db->lastInsertId();
         }
 
         $planStmt = $db->prepare("INSERT INTO paylater_plans (account_id, purchase_txn_id, total_payable, cash_price, interest, months, installment_amount, first_due_date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
         $planStmt->execute([$accountId, $purchaseTxnId, $totalPayable, $cashPrice, $interest, $months, $installment, $firstDue, date('Y-m-d H:i:s')]);
         $planId = (int) $db->lastInsertId();
 
-        $db->prepare("UPDATE transactions SET plan_id = ? WHERE id = ?")->execute([$planId, $purchaseTxnId]);
+        $linkTxn = $db->prepare("UPDATE transactions SET plan_id = ? WHERE id = ?");
+        $linkTxn->execute([$planId, $purchaseTxnId]);
+        if ($financingTxnId !== null) {
+            $linkTxn->execute([$planId, $financingTxnId]);
+        }
 
         $instStmt = $db->prepare("INSERT INTO paylater_installments (plan_id, seq, due_date, amount) VALUES (?, ?, ?, ?)");
         $dates = self::buildSchedule($firstDue, $months);
@@ -151,6 +157,92 @@ final class PaylaterPlan
         $stmt = $db->prepare("SELECT COALESCE(SUM(amount - paid_amount), 0) FROM paylater_installments WHERE plan_id = ? AND status IN ('open','partial')");
         $stmt->execute([$planId]);
         return round((float) $stmt->fetchColumn(), 2);
+    }
+
+    /** Recompute active/completed status for a plan based on its instalments. */
+    public static function refreshStatus(int $planId): void
+    {
+        $db = Database::getConnection();
+        $remaining = self::remaining($planId);
+        $stmt = $db->prepare("SELECT status FROM paylater_plans WHERE id = ?");
+        $stmt->execute([$planId]);
+        $status = $stmt->fetchColumn();
+        if ($status === 'cancelled') {
+            return;
+        }
+        $newStatus = $remaining <= 0.001 ? 'completed' : 'active';
+        if ($status !== $newStatus) {
+            $db->prepare("UPDATE paylater_plans SET status = ? WHERE id = ?")->execute([$newStatus, $planId]);
+            AppLog::info('plan_status_changed', ['plan_id' => $planId, 'from' => $status, 'to' => $newStatus]);
+        }
+    }
+
+    public static function refreshStatusesForAccount(int $accountId): void
+    {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT id FROM paylater_plans WHERE account_id = ? AND status = 'active'");
+        $stmt->execute([$accountId]);
+        foreach ($stmt->fetchAll() as $row) {
+            self::refreshStatus((int) $row['id']);
+        }
+    }
+
+    /**
+     * Reflect an edited plan-linked transaction back onto the plan and its
+     * instalments. Regenerates the schedule when nothing has been paid yet.
+     */
+    public static function syncFromTransaction(int $planId, float $newTotal, string $description, string $date): void
+    {
+        $plan = self::find($planId);
+        if ($plan === null) {
+            return;
+        }
+        $db = Database::getConnection();
+        $total = round($newTotal, 2);
+
+        $paidStmt = $db->prepare("SELECT COALESCE(SUM(paid_amount), 0) FROM paylater_installments WHERE plan_id = ?");
+        $paidStmt->execute([$planId]);
+        $paid = (float) $paidStmt->fetchColumn();
+
+        if ($paid <= 0.001) {
+            $months = max(1, (int) $plan['months']);
+            $installment = round($total / $months, 2);
+            $db->prepare("DELETE FROM paylater_installments WHERE plan_id = ?")->execute([$planId]);
+            $ins = $db->prepare("INSERT INTO paylater_installments (plan_id, seq, due_date, amount) VALUES (?, ?, ?, ?)");
+            $allocated = 0.0;
+            foreach (self::buildSchedule((string) $plan['first_due_date'], $months) as $i => $due) {
+                $amt = ($i === $months - 1) ? round($total - $allocated, 2) : $installment;
+                $allocated += $amt;
+                $ins->execute([$planId, $i + 1, $due, $amt]);
+            }
+            // Cash-price split cannot be expressed in the edit modal, so drop it.
+            $db->prepare("DELETE FROM transactions WHERE plan_id = ? AND description LIKE '%(financing)'")->execute([$planId]);
+            $db->prepare("UPDATE paylater_plans SET total_payable = ?, installment_amount = ?, cash_price = NULL, interest = 0, status = 'active' WHERE id = ?")
+               ->execute([$total, $installment, $planId]);
+            AppLog::info('plan_edited', ['plan_id' => $planId, 'total' => $total, 'months' => $months]);
+        } else {
+            AppLog::warn('plan_edit_skipped_paid', ['plan_id' => $planId, 'paid' => $paid]);
+        }
+
+        $upd = $db->prepare("UPDATE transactions SET description = ? WHERE plan_id = ? AND description LIKE '%(financing)'");
+        $upd->execute([$description . ' (financing)', $planId]);
+
+        Bill::sync((int) $plan['account_id']);
+    }
+
+    /** Remove a plan and its instalments (used when its purchase is deleted). */
+    public static function cancel(int $planId): void
+    {
+        $plan = self::find($planId);
+        if ($plan === null) {
+            return;
+        }
+        $db = Database::getConnection();
+        $db->prepare("DELETE FROM paylater_installments WHERE plan_id = ?")->execute([$planId]);
+        $db->prepare("DELETE FROM transactions WHERE plan_id = ?")->execute([$planId]);
+        $db->prepare("DELETE FROM paylater_plans WHERE id = ?")->execute([$planId]);
+        Bill::sync((int) $plan['account_id']);
+        AppLog::info('plan_cancelled', ['plan_id' => $planId, 'account_id' => (int) $plan['account_id']]);
     }
 
     /**

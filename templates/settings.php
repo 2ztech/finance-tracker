@@ -139,6 +139,15 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
         </div>
         <a href="/settings/duplicates" class="shrink-0 rounded-lg border px-4 py-2.5 text-sm font-semibold text-center transition-colors" style="border-color:var(--border);color:var(--text);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Review Duplicates</a>
     </div>
+
+    <!-- Logs -->
+    <div class="flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between" style="border-color:var(--border-light);">
+        <div>
+            <p class="text-sm font-medium" style="color:var(--text);">Activity Logs</p>
+            <p class="text-xs" style="color:var(--text-secondary);">Download recent app events and errors for troubleshooting.</p>
+        </div>
+        <a href="/settings/logs" class="shrink-0 rounded-lg border px-4 py-2.5 text-sm font-semibold text-center transition-colors" style="border-color:var(--border);color:var(--text);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Download Logs</a>
+    </div>
 </div>
 
 <script>

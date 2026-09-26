@@ -33,6 +33,15 @@ spl_autoload_register(function ($class_name) {
     }
 });
 
+// Capture PHP warnings/errors and uncaught exceptions into the app log.
+set_error_handler(function ($no, $str, $file, $line) {
+    AppLog::warn('php_error', ['msg' => $str, 'file' => $file, 'line' => $line]);
+    return false;
+});
+set_exception_handler(function ($e) {
+    AppLog::error('uncaught_exception', ['msg' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+});
+
 // Initialize the database and ensure tables exist
 Database::getConnection();
 
@@ -108,6 +117,14 @@ if ($route === 'settings/backup') {
     die('Could not create a database backup.');
 }
 
+if ($route === 'settings/logs') {
+    Auth::requireLogin();
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="expenzz-logs_' . date('Y-m-d_Hi') . '.log"');
+    echo AppLog::tail(3000);
+    exit;
+}
+
 if ($route === 'settings/restore' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     if (!isset($_FILES['db_file']) || $_FILES['db_file']['error'] !== 0) {
@@ -131,12 +148,14 @@ if ($route === 'settings/restore' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $check = Backup::validateSqliteFile($tmp);
     if (!$check['ok']) {
         @unlink($tmp);
+        AppLog::warn('restore_rejected', ['error' => $check['error']]);
         header('Location: /settings?msg=restore_invalid');
         exit;
     }
 
     // Snapshot the current DB before replacing it (keeps newest 3).
     Backup::backupCurrent(3);
+    AppLog::info('restore_started', ['original' => $original]);
 
     $dest = Backup::dbPath();
     if (@rename($tmp, $dest)) {
@@ -281,12 +300,14 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($id > 0) {
         Account::update($id, $data);
+        AppLog::info('account_updated', ['id' => $id, 'name' => $data['name'], 'kind' => $kind]);
         header('Location: /accounts?msg=updated');
     } else {
         $newId = Account::create($data);
         if ($newId > 0 && Account::activeId() === null) {
             Account::setActive($newId);
         }
+        AppLog::info('account_created', ['id' => $newId, 'name' => $data['name'], 'kind' => $kind]);
         header('Location: /accounts?msg=created');
     }
     exit;
@@ -365,7 +386,8 @@ if ($route === 'bills/pay' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $from = (int) ($_POST['from_account_id'] ?? 0);
     $date = $_POST['date'] ?? date('Y-m-d');
     if ($accountId > 0 && $dueDate !== '' && $amount > 0) {
-        Bill::payDue($accountId, $dueDate, $amount, $from, $date);
+        $applied = Bill::payDue($accountId, $dueDate, $amount, $from, $date);
+        AppLog::info('bill_paid', ['account_id' => $accountId, 'due_date' => $dueDate, 'requested' => $amount, 'applied' => $applied, 'from' => $from]);
     }
     header('Location: /bills?msg=paid');
     exit;
@@ -377,7 +399,8 @@ if ($route === 'plans/settle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $from = (int) ($_POST['from_account_id'] ?? 0);
     $date = $_POST['date'] ?? date('Y-m-d');
     if ($planId > 0) {
-        PaylaterPlan::settle($planId, $from, $date);
+        $settled = PaylaterPlan::settle($planId, $from, $date);
+        AppLog::info('plan_settled', ['plan_id' => $planId, 'amount' => $settled, 'from' => $from]);
     }
     header('Location: /bills?msg=settled');
     exit;
@@ -389,7 +412,8 @@ if ($route === 'plans/refund' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $amount = (float) ($_POST['amount'] ?? 0);
     $date = $_POST['date'] ?? date('Y-m-d');
     if ($planId > 0 && $amount > 0) {
-        PaylaterPlan::refund($planId, $amount, $date);
+        $refunded = PaylaterPlan::refund($planId, $amount, $date);
+        AppLog::info('plan_refunded', ['plan_id' => $planId, 'amount' => $refunded]);
     }
     header('Location: /bills?msg=refunded');
     exit;

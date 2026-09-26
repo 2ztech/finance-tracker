@@ -45,6 +45,9 @@ final class Bill
             $status = $paid >= $due - 0.001 ? 'paid' : ($paid > 0 ? 'partial' : 'open');
             $insert->execute([$accountId, $g['due_date'], $due, $paid, $status]);
         }
+
+        // Keep plan statuses in sync with their instalments.
+        PaylaterPlan::refreshStatusesForAccount($accountId);
     }
 
     /**

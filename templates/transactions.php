@@ -48,6 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 PaylaterPlan::createPurchase((int) $accId, $catId, $description, $date, $total, $months, $cash, $offset);
             } else {
                 Expense::addTransaction($catId, $amount, $type, $description, $date, $accId);
+                if ($targetAcc !== null && Account::isLiability($targetAcc) && $accId) {
+                    Bill::sync((int) $accId);
+                }
             }
         }
     } elseif ($action === 'edit_transaction') {
@@ -59,12 +62,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $date = $_POST['date'] ?? date('Y-m-d');
         $accId = (int)($_POST['account_id'] ?? 0);
         if ($id > 0 && $catId > 0 && $amount > 0 && $description && $date) {
+            $db = Database::getConnection();
+            $prev = $db->prepare("SELECT plan_id, account_id FROM transactions WHERE id = ?");
+            $prev->execute([$id]);
+            $prevRow = $prev->fetch() ?: ['plan_id' => null, 'account_id' => null];
+
             Expense::updateTransaction($id, $catId, $amount, $type, $description, $date, $accId > 0 ? $accId : $accountId);
+
+            if (!empty($prevRow['plan_id'])) {
+                PaylaterPlan::syncFromTransaction((int) $prevRow['plan_id'], $amount, $description, $date);
+            }
+            $syncAcc = $accId > 0 ? $accId : (int) ($prevRow['account_id'] ?? 0);
+            if ($syncAcc > 0) {
+                Bill::sync($syncAcc);
+            }
         }
     } elseif ($action === 'delete_transaction') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            Expense::deleteTransaction($id);
+            $db = Database::getConnection();
+            $prev = $db->prepare("SELECT plan_id, account_id FROM transactions WHERE id = ?");
+            $prev->execute([$id]);
+            $prevRow = $prev->fetch() ?: ['plan_id' => null, 'account_id' => null];
+
+            if (!empty($prevRow['plan_id'])) {
+                PaylaterPlan::cancel((int) $prevRow['plan_id']);
+            } else {
+                Expense::deleteTransaction($id);
+            }
+            if (!empty($prevRow['account_id'])) {
+                Bill::sync((int) $prevRow['account_id']);
+            }
         }
     }
     header("Location: /transactions?month=" . urlencode($reqMonth));
