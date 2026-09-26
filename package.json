@@ -4,6 +4,7 @@
   "description": "A lightweight, mathematically rigorous personal finance tracker built with vanilla PHP 8.3 and SQLite.",
   "main": "tailwind.config.js",
   "scripts": {
+    "build:css": "tailwindcss -i ./public/tailwind.css -o ./public/tailwind.min.css --minify",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

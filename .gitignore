@@ -1,2 +1,4 @@
 data/*.db
+data/*.db.bak
+data/backups/
 node_modules/

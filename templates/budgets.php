@@ -13,7 +13,7 @@ $budgets = Budget::getAll();
 $allCategories = array_filter(Category::getAll(), fn($c) => $c['type'] === 'expense');
 $monthlyTotals = [];
 foreach (Expense::getExpensesByCategory($month, $year) as $cat) {
-    $monthlyTotals[$cat['name']] = $cat['total'];
+    $monthlyTotals[(int) $cat['category_id']] = $cat['total'];
 }
 
 ob_start();
@@ -60,7 +60,7 @@ ob_start();
             <div class="space-y-4">
                 <?php foreach ($budgets as $b): ?>
                     <?php
-                        $spent = $monthlyTotals[$b['category_name']] ?? 0;
+                        $spent = $monthlyTotals[(int) $b['category_id']] ?? 0;
                         $pct = $b['amount'] > 0 ? min(($spent / $b['amount']) * 100, 100) : 0;
                         $over = $spent > $b['amount'];
                         $remaining = $b['amount'] - $spent;

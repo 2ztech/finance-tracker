@@ -62,12 +62,11 @@ cd finance-tracker
 php -S localhost:8000 -t public
 ```
 
-## Default Credentials
+## First Login
 
-- **Username:** admin
-- **Password:** admin
-
-Change immediately via Settings after first login.
+There are **no default credentials**. On first launch the app shows a setup
+screen where you choose your own username and password. You can change them
+later from Settings.
 
 ## Data Persistence
 

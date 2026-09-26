@@ -14,6 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         $error = 'Failed to create user. Please try again.';
+    } elseif (Auth::isRateLimited(Auth::clientIp())) {
+        $error = 'Too many failed attempts. Please wait 15 minutes and try again.';
     } else {
         if (Auth::attemptLogin($username, $password)) {
             header('Location: /dashboard');

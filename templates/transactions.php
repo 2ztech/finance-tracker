@@ -261,7 +261,7 @@ ob_start();
                     </div>
                 </div>
                 <?php foreach ($dayTxs as $t): ?>
-                    <div class="transaction-row flex items-center justify-between border-b px-4 py-3 last:border-b-0 transition-colors" data-search="<?= htmlspecialchars(strtolower((string)($t['category_name'] ?? '')) . ' ' . strtolower((string)$t['description']), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string)$date, ENT_QUOTES, 'UTF-8') ?>" style="border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
+                    <div class="transaction-row group flex items-center justify-between border-b px-4 py-3 last:border-b-0 transition-colors" data-search="<?= htmlspecialchars(strtolower((string)($t['category_name'] ?? '')) . ' ' . strtolower((string)$t['description']), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string)$date, ENT_QUOTES, 'UTF-8') ?>" style="border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2">
                                 <?php if ($t['category_name']): ?>
@@ -278,7 +278,7 @@ ob_start();
                                 RM <?= number_format($t['amount'], 2) ?>
                             </span>
                             <!-- Actions (visible on hover, always visible on mobile via opacity) -->
-                            <div class="flex items-center gap-1 opacity-0 transition-opacity sm:group-hover:opacity-100" style="opacity:0.4;">
+                            <div class="flex items-center gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
                                 <button type="button" onclick="openEdit(<?= $t['id'] ?>, '<?= htmlspecialchars((string)$t['date'], ENT_QUOTES, 'UTF-8') ?>', <?= (int)($t['category_id'] ?? 0) ?>, '<?= htmlspecialchars(addslashes((string)$t['description']), ENT_QUOTES, 'UTF-8') ?>', <?= $t['amount'] ?>, '<?= $t['type'] ?>')"
                                     class="rounded p-1 transition-colors" style="color:var(--text-muted);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
                                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
@@ -435,10 +435,6 @@ ob_start();
                                 <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #e5e9f0;font-weight:600;font-variant-numeric:tabular-nums;color:#1a3a6b;"><?= $r['balance'] ?></td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php
-                        $totalDebit = array_sum(array_column($printRows, 'debit') ? array_map(fn($r) => (float) str_replace(',', '', $r['debit'] ?: '0'), $printRows) : []);
-                        $totalCredit = array_sum(array_map(fn($r) => (float) str_replace(',', '', $r['credit'] ?: '0'), $printRows));
-                        ?>
                         <tr style="background:#f0f3f8;font-weight:700;">
                             <td style="padding:8px 10px;border-top:2px solid #1a3a6b;" colspan="2">Summary</td>
                             <td style="padding:8px 10px;text-align:right;border-top:2px solid #1a3a6b;color:#c0392b;font-variant-numeric:tabular-nums;"><?= number_format(array_sum(array_map(fn($t) => $t['type'] === 'expense' ? $t['amount'] : 0, $printTxns)), 2) ?></td>

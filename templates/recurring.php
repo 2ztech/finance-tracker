@@ -28,14 +28,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Expense::deleteCommitment($id);
             }
         }
+        // Repost immediately so newly added/edited items reflect in the ledger.
+        Expense::processDueCommitments(true);
         header('Location: /recurring');
         exit;
     }
 }
 
 $commitments = Expense::getCommitments();
-$totalExpense = array_sum(array_column(array_filter($commitments, fn($c) => ($c['type'] ?? 'expense') === 'expense'), 'amount'));
-$totalIncome = array_sum(array_column(array_filter($commitments, fn($c) => ($c['type'] ?? 'expense') === 'income'), 'amount'));
+$today = date('Y-m-d');
+$activeCommitments = array_filter($commitments, function ($c) use ($today) {
+    if (!empty($c['start_date']) && $c['start_date'] > $today) {
+        return false;
+    }
+    if (!empty($c['end_date']) && $c['end_date'] < $today) {
+        return false;
+    }
+    return true;
+});
+$totalExpense = array_sum(array_column(array_filter($activeCommitments, fn($c) => ($c['type'] ?? 'expense') === 'expense'), 'amount'));
+$totalIncome = array_sum(array_column(array_filter($activeCommitments, fn($c) => ($c['type'] ?? 'expense') === 'income'), 'amount'));
 $categories = Category::getAll();
 
 ob_start();
@@ -69,7 +81,7 @@ ob_start();
         <?php else: ?>
             <?php foreach ($commitments as $c): ?>
                 <?php $cType = $c['type'] ?? 'expense'; $isIncome = $cType === 'income'; ?>
-                <div class="flex items-center justify-between rounded-xl border p-4 transition-colors" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                <div class="group flex items-center justify-between rounded-xl border p-4 transition-colors" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
                     <div class="flex items-center gap-4">
                         <div class="flex h-12 w-12 flex-col items-center justify-center rounded-lg border text-center" style="background:<?= $isIncome ? 'var(--success-soft)' : 'var(--danger-soft)' ?>;border-color:<?= $isIncome ? 'var(--success)' : 'var(--danger)' ?>;color:<?= $isIncome ? 'var(--income)' : 'var(--expense)' ?>;">
                             <span class="text-[10px] font-bold uppercase">Day</span>
@@ -96,7 +108,7 @@ ob_start();
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="flex flex-col gap-1 opacity-0 transition-opacity sm:group-hover:opacity-100" style="opacity:0.3;">
+                    <div class="flex flex-col gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
                         <button type="button" onclick="editItem(<?= $c['id'] ?>, '<?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?>', <?= $c['amount'] ?>, '<?= $cType ?>', <?= $c['due_date_day'] ?>, <?= (int)($c['category_id'] ?? 0) ?>, '<?= htmlspecialchars((string)($c['start_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars((string)($c['end_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>')"
                             class="rounded p-1.5 transition-colors" style="color:var(--text-muted);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>

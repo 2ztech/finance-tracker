@@ -84,6 +84,14 @@ final class Database
                 amount REAL DEFAULT 0,
                 FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
             )",
+            "CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT NOT NULL,
+                attempted_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)",
+            "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)",
         ];
 
         foreach ($queries as $query) {
@@ -126,5 +134,7 @@ final class Database
                 $insertCat->execute([$cat['name'], $cat['type'], $cat['color_hex']]);
             }
         }
+
+        Maintenance::run();
     }
 }

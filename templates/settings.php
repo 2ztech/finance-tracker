@@ -24,7 +24,8 @@ $toasts = [
     'account_error'    => ['Incorrect current password.', 'danger'],
     'restore_success'  => ['Database restored successfully.', 'success'],
     'restore_error'    => ['Invalid file. Upload .db or .sqlite only.', 'danger'],
-    'clean_success'    => ['Removed ' . ($_GET['count'] ?? 0) . ' duplicate(s).', 'success'],
+    'restore_invalid'  => ['Invalid or corrupt database file. Nothing was changed.', 'danger'],
+    'clean_success'    => ['Removed ' . max(0, (int) ($_GET['count'] ?? 0)) . ' duplicate(s).', 'success'],
     'settings_success' => ['Settings saved.', 'success'],
 ];
 if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
@@ -32,7 +33,7 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
         <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <?php if ($t[1] === 'success'): ?><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/><?php else: ?><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><?php endif; ?>
         </svg>
-        <?= $t[0] ?>
+        <?= htmlspecialchars($t[0], ENT_QUOTES, 'UTF-8') ?>
     </div>
 <?php endif; ?>
 
@@ -146,16 +147,13 @@ if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
         </form>
     </div>
 
-    <!-- Clean Duplicates -->
+    <!-- Find Duplicates -->
     <div class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <p class="text-sm font-medium" style="color:var(--text);">Clean Duplicates</p>
-            <p class="text-xs" style="color:var(--text-secondary);">Remove duplicate transactions. This cannot be undone.</p>
+            <p class="text-sm font-medium" style="color:var(--text);">Find Duplicates</p>
+            <p class="text-xs" style="color:var(--text-secondary);">Review likely duplicates and delete only the ones you choose. Nothing is removed automatically.</p>
         </div>
-        <form method="POST" action="/settings/clean-duplicates" onsubmit="return confirm('Remove all duplicate transactions? This cannot be undone.');">
-            <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
-            <button type="submit" class="shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold text-white" style="background:var(--danger);">Clean Duplicates</button>
-        </form>
+        <a href="/settings/duplicates" class="shrink-0 rounded-lg border px-4 py-2.5 text-sm font-semibold text-center transition-colors" style="border-color:var(--border);color:var(--text);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">Review Duplicates</a>
     </div>
 </div>
 

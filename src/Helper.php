@@ -10,10 +10,19 @@ final class Helper
         $reqMonth = $_GET['month'] ?? date('Y-m');
         $parts = explode('-', $reqMonth);
 
-        if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
-            $year = $parts[0];
-            $month = str_pad($parts[1], 2, '0', STR_PAD_LEFT);
-        } else {
+        $valid = false;
+        if (count($parts) === 2 && ctype_digit($parts[0]) && ctype_digit($parts[1])) {
+            $y = (int) $parts[0];
+            $mo = (int) $parts[1];
+            if ($y >= 1970 && $y <= 2999 && $mo >= 1 && $mo <= 12) {
+                $year = (string) $y;
+                $month = str_pad((string) $mo, 2, '0', STR_PAD_LEFT);
+                $reqMonth = "$year-$month";
+                $valid = true;
+            }
+        }
+
+        if (!$valid) {
             $year = date('Y');
             $month = date('m');
             $reqMonth = "$year-$month";

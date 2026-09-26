@@ -1,0 +1,11 @@
+.git
+.gitignore
+.github
+node_modules
+data
+README.md
+docker-compose.yml
+tailwind.config.js
+package.json
+package-lock.json
+public/tailwind.css

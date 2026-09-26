@@ -47,7 +47,7 @@ ob_start();
             <?php else: ?>
                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <?php foreach ($expenses as $c): ?>
-                        <div class="flex items-center justify-between rounded-lg border p-3 transition-colors" style="background:var(--bg);border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg)'">
+                        <div class="group flex items-center justify-between rounded-lg border p-3 transition-colors" style="background:var(--bg);border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg)'">
                             <div class="flex items-center gap-3">
                                 <div class="h-4 w-4 rounded-full" style="background:<?= htmlspecialchars((string)$c['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></div>
                                 <span class="text-sm font-medium" style="color:var(--text);"><?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -56,7 +56,7 @@ ob_start();
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $c['id'] ?>">
-                                <button type="submit" class="rounded p-1 opacity-0 transition-opacity sm:group-hover:opacity-100" style="opacity:0.3;color:var(--text-muted);" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'">
+                                <button type="submit" class="rounded p-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100" style="color:var(--text-muted);" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'">
                                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                 </button>
                             </form>
@@ -77,7 +77,7 @@ ob_start();
             <?php else: ?>
                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <?php foreach ($incomes as $c): ?>
-                        <div class="flex items-center justify-between rounded-lg border p-3 transition-colors" style="background:var(--bg);border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg)'">
+                        <div class="group flex items-center justify-between rounded-lg border p-3 transition-colors" style="background:var(--bg);border-color:var(--border-light);" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg)'">
                             <div class="flex items-center gap-3">
                                 <div class="h-4 w-4 rounded-full" style="background:<?= htmlspecialchars((string)$c['color_hex'], ENT_QUOTES, 'UTF-8') ?>;"></div>
                                 <span class="text-sm font-medium" style="color:var(--text);"><?= htmlspecialchars((string)$c['name'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -86,7 +86,7 @@ ob_start();
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $c['id'] ?>">
-                                <button type="submit" class="rounded p-1 opacity-0 transition-opacity sm:group-hover:opacity-100" style="opacity:0.3;color:var(--text-muted);" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'">
+                                <button type="submit" class="rounded p-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100" style="color:var(--text-muted);" onmouseover="this.style.color='var(--danger)'" onmouseout="this.style.color='var(--text-muted)'">
                                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                 </button>
                             </form>

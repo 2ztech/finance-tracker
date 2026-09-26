@@ -11,6 +11,17 @@ if (empty($detectedTz) || !in_array($detectedTz, timezone_identifiers_list())) {
 }
 date_default_timezone_set($detectedTz);
 
+$secureCookie = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+    || (($_SERVER['SERVER_PORT'] ?? null) == 443)
+    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',
+    'httponly' => true,
+    'samesite' => 'Lax',
+    'secure'   => $secureCookie,
+]);
 session_start();
 
 // Auto-load core classes
@@ -79,7 +90,7 @@ if ($route === 'settings/ledger' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($route === 'settings/export') {
     Auth::requireLogin();
     header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="finance_transactions_' . date('Y-m-d') . '.csv"');
+    header('Content-Disposition: attachment; filename="finance_transactions_' . date('Y-m-d_Hi') . '.csv"');
     $db = Database::getConnection();
     $stmt = $db->query("SELECT t.date, t.type, t.amount, c.name as category_name, t.description FROM transactions t LEFT JOIN categories c ON t.category_id = c.id ORDER BY t.date DESC");
     $output = fopen('php://output', 'w');
@@ -93,51 +104,79 @@ if ($route === 'settings/export') {
 
 if ($route === 'settings/backup') {
     Auth::requireLogin();
-    $file = __DIR__ . '/../data/finance.db';
-    if (file_exists($file)) {
+    $tmp = sys_get_temp_dir() . '/finance_backup_' . bin2hex(random_bytes(6)) . '.db';
+    if (Backup::createConsistentCopy($tmp)) {
         header('Content-Description: File Transfer');
         header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="finance.db"');
+        header('Content-Disposition: attachment; filename="finance_' . date('Y-m-d_Hi') . '.db"');
         header('Expires: 0');
         header('Cache-Control: must-revalidate');
         header('Pragma: public');
-        header('Content-Length: ' . filesize($file));
-        readfile($file);
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
         exit;
     }
+    http_response_code(500);
+    die('Could not create a database backup.');
 }
 
 if ($route === 'settings/restore' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
-    if (isset($_FILES['db_file']) && $_FILES['db_file']['error'] == 0) {
-        $fileInfo = pathinfo($_FILES['db_file']['name']);
-        $ext = strtolower($fileInfo['extension'] ?? '');
-        if (in_array($ext, ['db', 'sqlite'])) {
-            $dest = __DIR__ . '/../data/finance.db';
-            if (move_uploaded_file($_FILES['db_file']['tmp_name'], $dest)) {
-                header('Location: /settings?msg=restore_success');
-                exit;
-            }
-        }
+    if (!isset($_FILES['db_file']) || $_FILES['db_file']['error'] !== 0) {
+        header('Location: /settings?msg=restore_error');
+        exit;
     }
+
+    $original = (string) $_FILES['db_file']['name'];
+    $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+    if (!in_array($ext, ['db', 'sqlite'], true)) {
+        header('Location: /settings?msg=restore_error');
+        exit;
+    }
+
+    $tmp = sys_get_temp_dir() . '/finance_restore_' . bin2hex(random_bytes(6)) . '.db';
+    if (!move_uploaded_file($_FILES['db_file']['tmp_name'], $tmp)) {
+        header('Location: /settings?msg=restore_error');
+        exit;
+    }
+
+    $check = Backup::validateSqliteFile($tmp);
+    if (!$check['ok']) {
+        @unlink($tmp);
+        header('Location: /settings?msg=restore_invalid');
+        exit;
+    }
+
+    // Snapshot the current DB before replacing it (keeps newest 3).
+    Backup::backupCurrent(3);
+
+    $dest = Backup::dbPath();
+    if (@rename($tmp, $dest)) {
+        header('Location: /settings?msg=restore_success');
+        exit;
+    }
+
+    @unlink($tmp);
     header('Location: /settings?msg=restore_error');
     exit;
 }
 
-if ($route === 'settings/clean-duplicates' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($route === 'settings/duplicates/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
-    $db = Database::getConnection();
-    
-    $stmt = $db->prepare("
-        DELETE FROM transactions WHERE id NOT IN (
-            SELECT MIN(id) FROM transactions 
-            GROUP BY DATE(date), amount, type, TRIM(LOWER(description)), category_id
-        )
-    ");
-    $stmt->execute();
-    $deleted = $stmt->rowCount();
-    
-    header("Location: /settings?msg=clean_success&count={$deleted}");
+    $ids = $_POST['ids'] ?? [];
+    $deleted = 0;
+    if (is_array($ids) && !empty($ids)) {
+        $db = Database::getConnection();
+        $stmt = $db->prepare("DELETE FROM transactions WHERE id = ?");
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            if ($id > 0 && $stmt->execute([$id])) {
+                $deleted += $stmt->rowCount();
+            }
+        }
+    }
+    header('Location: /settings/duplicates?deleted=' . $deleted);
     exit;
 }
 
@@ -253,6 +292,7 @@ $routes = [
     'categories' => 'categories.php',
     'budgets' => 'budgets.php',
     'settings' => 'settings.php',
+    'settings/duplicates' => 'duplicates.php',
 ];
 
 if (array_key_exists($route, $routes)) {
