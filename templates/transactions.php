@@ -33,6 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $targetAcc = $accId ? Account::find((int) $accId) : null;
         $repayMode = $_POST['repay_mode'] ?? '';
         if ($catId > 0 && $amount > 0 && $description && $date) {
+            if (!Category::isValidForType($catId, $type)) {
+                header("Location: /transactions?month=" . urlencode($reqMonth) . "&msg=invalid_category");
+                exit;
+            }
             if ($targetAcc !== null && $targetAcc['kind'] === 'paylater' && $type === 'expense' && $repayMode !== '') {
                 $months = (int)($_POST['months'] ?? 1);
                 $cash = ($_POST['cash_price'] ?? '') !== '' ? (float) $_POST['cash_price'] : null;
@@ -62,6 +66,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $date = $_POST['date'] ?? date('Y-m-d');
         $accId = (int)($_POST['account_id'] ?? 0);
         if ($id > 0 && $catId > 0 && $amount > 0 && $description && $date) {
+            if (!Category::isValidForType($catId, $type)) {
+                header("Location: /transactions?month=" . urlencode($reqMonth) . "&msg=invalid_category");
+                exit;
+            }
             $db = Database::getConnection();
             $prev = $db->prepare("SELECT plan_id, account_id FROM transactions WHERE id = ?");
             $prev->execute([$id]);
@@ -175,6 +183,12 @@ ob_start();
     </div>
 </div>
 
+<?php if (($_GET['msg'] ?? '') === 'invalid_category'): ?>
+    <div class="rounded-xl border px-4 py-3 text-sm" style="background:var(--danger-soft);border-color:var(--danger);color:var(--danger);">
+        The selected category does not match the transaction type.
+    </div>
+<?php endif; ?>
+
 <?php if ($account === null): ?>
     <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
         <p class="text-sm" style="color:var(--text-muted);">No account yet. <a href="/accounts" style="color:var(--accent);">Create one</a> first.</p>
@@ -285,29 +299,29 @@ ob_start();
             </div>
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Type</label>
-                <select name="type" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <select name="type" id="add_type" onchange="filterAddCategories()" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
                     <option value="expense"><?= $isLiability ? 'Purchase' : 'Expense' ?></option>
                     <option value="income"><?= $isLiability ? 'Refund / Credit' : 'Income' ?></option>
                 </select>
             </div>
             <div>
                 <label id="amountLabel" class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);"><?= $isLiability ? 'Price (RM)' : 'Amount (RM)' ?></label>
-                <input type="number" step="0.01" min="0.01" name="amount" required placeholder="0.00" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <input type="number" step="0.01" min="0.01" name="amount" id="add_amount" required placeholder="0.00" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
             </div>
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Category</label>
-                <select name="category_id" required class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <select name="category_id" id="add_category_id" required class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
                     <option value="">Select...</option>
                     <?php foreach($categories as $cat): ?><option value="<?= (int)$cat['id'] ?>"><?= htmlspecialchars((string)$cat['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
                 </select>
             </div>
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Date</label>
-                <input type="date" name="date" required value="<?= htmlspecialchars((string)(date('Y-m') === $reqMonth ? date('Y-m-d') : $reqMonth . '-01'), ENT_QUOTES, 'UTF-8') ?>" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <input type="date" name="date" id="add_date" required value="<?= htmlspecialchars((string)(date('Y-m') === $reqMonth ? date('Y-m-d') : $reqMonth . '-01'), ENT_QUOTES, 'UTF-8') ?>" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
             </div>
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Description</label>
-                <input type="text" name="description" required placeholder="e.g. Lunch" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                <input type="text" name="description" id="add_description" required placeholder="e.g. Lunch" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
             </div>
         </div>
         <?php if (in_array('paylater', array_column($accounts, 'kind'), true)): ?>
@@ -468,7 +482,7 @@ ob_start();
                 </div>
                 <div>
                     <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Type</label>
-                    <select name="type" id="edit_type" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                    <select name="type" id="edit_type" onchange="filterEditCategories()" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
                         <option value="expense">Expense</option><option value="income">Income</option>
                     </select>
                 </div>
@@ -566,6 +580,29 @@ ob_start();
 
 <script>
 var accountKinds = <?= json_encode(array_column($accounts, 'kind', 'id'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+var categoriesData = <?= json_encode(array_map(fn($c) => ['id' => (int) $c['id'], 'name' => $c['name'], 'type' => $c['type']], $categories), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+function renderCategoryOptions(sel, type, selectedId) {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Select...</option>';
+    categoriesData.forEach(function(c) {
+        if (c.type !== type) return;
+        var o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name;
+        if (selectedId !== undefined && selectedId !== '' && String(c.id) === String(selectedId)) o.selected = true;
+        sel.appendChild(o);
+    });
+}
+function filterAddCategories() {
+    var t = document.getElementById('add_type');
+    var c = document.getElementById('add_category_id');
+    if (t && c) renderCategoryOptions(c, t.value);
+}
+function filterEditCategories() {
+    var t = document.getElementById('edit_type');
+    var c = document.getElementById('edit_category_id');
+    if (t && c) renderCategoryOptions(c, t.value, c.value);
+}
 function onAddAccountChange() {
     var sel = document.getElementById('add_account_id');
     var kind = accountKinds[sel.value] || 'savings';
@@ -578,6 +615,7 @@ function onAddAccountChange() {
         typeSel.options[0].text = isLiab ? 'Purchase' : 'Expense';
         typeSel.options[1].text = isLiab ? 'Refund / Credit' : 'Income';
     }
+    filterAddCategories();
     toggleRepay();
 }
 function toggleRepay() {
@@ -606,10 +644,11 @@ function toggleTransferForm(){ var f=document.getElementById('transferForm'); if
 function openEdit(id, date, catId, desc, amount, type, accountId) {
     document.getElementById('edit_id').value = id;
     document.getElementById('edit_date').value = date;
+    document.getElementById('edit_type').value = type;
+    filterEditCategories();
     document.getElementById('edit_category_id').value = catId;
     document.getElementById('edit_description').value = desc;
     document.getElementById('edit_amount').value = amount;
-    document.getElementById('edit_type').value = type;
     if (accountId) document.getElementById('edit_account_id').value = accountId;
     var m = document.getElementById('editModal');
     m.classList.remove('hidden'); m.classList.add('flex');
@@ -640,7 +679,7 @@ function applyFilters() {
     else {countEl.textContent='';clearBtn.classList.add('hidden');}
 }
 function clearFilters(){document.getElementById('filterSearch').value='';document.getElementById('filterFrom').value='';document.getElementById('filterTo').value='';applyFilters();}
-function quickAdd(type,catId,desc,amount){var f=document.getElementById('addRecordForm');if(!f)return;f.querySelector('select[name="type"]').value=type;f.querySelector('select[name="category_id"]').value=catId;f.querySelector('input[name="description"]').value=desc;if(amount>0)f.querySelector('input[name="amount"]').value=amount;f.querySelector('input[name="amount"]').focus();window.scrollTo({top:0,behavior:'smooth'});}
+function quickAdd(type,catId,desc,amount){var f=document.getElementById('addRecordForm');if(!f)return;f.querySelector('select[name="type"]').value=type;filterAddCategories();f.querySelector('select[name="category_id"]').value=catId;f.querySelector('input[name="description"]').value=desc;if(amount>0)f.querySelector('input[name="amount"]').value=amount;f.querySelector('input[name="amount"]').focus();window.scrollTo({top:0,behavior:'smooth'});}
 function toggleTemplateForm(){var f=document.getElementById('templateForm');f.classList.toggle('hidden');if(!f.classList.contains('hidden'))f.querySelector('input[type="text"]').focus();}
 
 (function(){
