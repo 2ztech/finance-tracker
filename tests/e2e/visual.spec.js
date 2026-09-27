@@ -20,7 +20,9 @@ test.describe('UI smoke / console health', () => {
     if (await accountSelect.count()) {
       const transactionAccount = accountSelect.locator('option', { hasText: 'TEST_TX' });
       if (await transactionAccount.count()) {
+        const accountSwitch = page.waitForNavigation({ waitUntil: 'networkidle' });
         await page.selectOption('select[name="account_id"]', await transactionAccount.first().getAttribute('value'));
+        await accountSwitch;
       }
     }
 

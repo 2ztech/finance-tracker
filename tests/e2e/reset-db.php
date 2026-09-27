@@ -36,5 +36,5 @@ foreach ([
     $db->exec("DELETE FROM {$table}");
 }
 
-Auth::setupFirstUser('admin', 'admin');
+Auth::setupFirstUser('expenzz-e2e-user', 'e2e-test-password-2026');
 echo "E2E database reset at {$path}\n";

@@ -18,9 +18,10 @@ final class Maintenance
     }
 
     /**
-     * Seed the first savings account from the legacy global settings and attach
-     * existing rows to it, so a single-account install keeps working after the
-     * multi-account upgrade. Runs once; the user can reorganise manually after.
+     * Migrate a legacy single-account database and attach its existing rows.
+     * A genuinely fresh installation must remain account-free until the user
+     * creates an account. Runs once so existing data is never reinterpreted on
+     * every request.
      */
     private static function seedAccounts(): void
     {
@@ -31,7 +32,22 @@ final class Maintenance
         $db = Database::getConnection();
         $existing = (int) $db->query("SELECT COUNT(*) FROM accounts")->fetchColumn();
 
-        if ($existing === 0) {
+        $hasLegacyData = (int) $db->query("SELECT COUNT(*) FROM users")->fetchColumn() > 0;
+        foreach ([
+            'transactions', 'transfers', 'bills', 'paylater_plans',
+            'paylater_installments', 'commitments', 'budgets', 'quick_templates',
+        ] as $table) {
+            if ((int) $db->query("SELECT COUNT(*) FROM {$table}")->fetchColumn() > 0) {
+                $hasLegacyData = true;
+                break;
+            }
+        }
+        if (!$hasLegacyData) {
+            $legacySetting = $db->query("SELECT 1 FROM settings WHERE key IN ('starting_bank_balance', 'tracking_start_month') LIMIT 1")->fetchColumn();
+            $hasLegacyData = $legacySetting !== false;
+        }
+
+        if ($existing === 0 && $hasLegacyData) {
             $opening = (float) Settings::get('starting_bank_balance', 0);
             $startMonth = (string) Settings::get('tracking_start_month', date('Y-m'));
             $stmt = $db->prepare("INSERT INTO accounts (name, kind, color_hex, opening_balance, start_month, first_due_offset, created_at) VALUES (?, 'savings', '#4f6ef7', ?, ?, 1, ?)");

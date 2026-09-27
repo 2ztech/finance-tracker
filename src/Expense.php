@@ -5,7 +5,6 @@ declare(strict_types=1);
 final class Expense
 {
     private static array $startingBalanceCache = [];
-    private static array $eomProjectionCache = [];
     private static array $onHandBalanceCache = [];
 
     // --- Transactions ---
@@ -252,57 +251,97 @@ final class Expense
     }
 
     /**
-     * Projected end-of-month balance for an account: its current balance plus
-     * recurring income still expected this month minus recurring expense.
+     * Projected cash at the end of a selected month, including unpaid recurring
+     * items and liability bills still outstanding by that date, with the full
+     * breakdown so the UI can show how the figure was reached.
+     *
+     * @return array{account_id:?int,month:string,year:string,month_end:?string,
+     *   balance:float,recurring_income:float,recurring_expense:float,
+     *   recurring_net:float,bills:float,bills_by_account:array<string,float>,eom:float}
      */
-    public static function projectedEndOfMonth(?int $accountId, ?string $month = null, ?string $year = null): float
+    public static function projectedEomBreakdown(?int $accountId, ?string $month = null, ?string $year = null): array
     {
         if ($accountId === null) {
-            return 0.0;
+            return [
+                'account_id' => null, 'month' => (string) ($month ?? date('m')), 'year' => (string) ($year ?? date('Y')),
+                'month_end' => null, 'balance' => 0.0, 'recurring_income' => 0.0, 'recurring_expense' => 0.0,
+                'recurring_net' => 0.0, 'bills' => 0.0, 'bills_by_account' => [], 'eom' => 0.0,
+            ];
         }
+
         $month = $month ?? date('m');
         $year = $year ?? date('Y');
-        $balance = Account::balance($accountId);
-        $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
-        $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
-        return round($balance + $unpaidInc - $unpaidExp, 2);
+        $monthEnd = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', (int) $year, (int) $month)));
+        // Account::balance with an as-of date includes manually entered future
+        // activity up to this month's end, and excludes activity dated later.
+        $balance = Account::balance($accountId, $monthEnd);
+
+        $requestedMonth = sprintf('%04d-%02d', (int) $year, (int) $month);
+        $trackingStart = Settings::get('tracking_start_month', date('Y-m'));
+        $firstForecastMonth = $requestedMonth < $trackingStart ? $requestedMonth : $trackingStart;
+        $account = Account::find($accountId);
+        if (!empty($account['start_month']) && $account['start_month'] > $firstForecastMonth && $account['start_month'] <= $requestedMonth) {
+            $firstForecastMonth = (string) $account['start_month'];
+        }
+
+        // The ledger balance contains posted transactions but not recurring
+        // forecasts. Carry each month's still-unposted schedules forward so a
+        // missed September posting remains reflected in an October projection.
+        $unpaidInc = 0.0;
+        $unpaidExp = 0.0;
+        $cursor = new DateTimeImmutable($firstForecastMonth . '-01');
+        $lastMonth = new DateTimeImmutable($requestedMonth . '-01');
+        while ($cursor <= $lastMonth) {
+            $unpaidInc += self::getUnpaidRecurring('income', $cursor->format('m'), $cursor->format('Y'), $accountId);
+            $unpaidExp += self::getUnpaidRecurring('expense', $cursor->format('m'), $cursor->format('Y'), $accountId);
+            $cursor = $cursor->modify('+1 month');
+        }
+
+        // Every liability account (credit / paylater) whose bill is still
+        // unpaid on or before the projected month-end reduces cash.
+        $billsByAccount = [];
+        $outstandingBills = 0.0;
+        foreach (Account::all(true) as $liability) {
+            if (!Account::isLiability($liability)) {
+                continue;
+            }
+            $amount = Bill::outstandingAsOf((int) $liability['id'], $monthEnd);
+            if ($amount > 0.0) {
+                $billsByAccount[(string) $liability['name']] = round($amount, 2);
+                $outstandingBills += $amount;
+            }
+        }
+
+        $balance = round($balance, 2);
+        $unpaidInc = round($unpaidInc, 2);
+        $unpaidExp = round($unpaidExp, 2);
+        $outstandingBills = round($outstandingBills, 2);
+
+        return [
+            'account_id' => $accountId,
+            'month' => (string) $month,
+            'year' => (string) $year,
+            'month_end' => $monthEnd,
+            'balance' => $balance,
+            'recurring_income' => $unpaidInc,
+            'recurring_expense' => $unpaidExp,
+            'recurring_net' => round($unpaidInc - $unpaidExp, 2),
+            'bills' => $outstandingBills,
+            'bills_by_account' => $billsByAccount,
+            'eom' => round($balance + $unpaidInc - $unpaidExp - $outstandingBills, 2),
+        ];
+    }
+
+    /** Projected cash at the end of a selected month (see projectedEomBreakdown). */
+    public static function projectedEndOfMonth(?int $accountId, ?string $month = null, ?string $year = null): float
+    {
+        return self::projectedEomBreakdown($accountId, $month, $year)['eom'];
     }
 
     public static function getEOMProjection(string $month, string $year, ?int $accountId = null): float
     {
-        $cacheKey = "$year-$month-" . ($accountId ?? 'all');
-        if (isset(self::$eomProjectionCache[$cacheKey])) {
-            return self::$eomProjectionCache[$cacheKey];
-        }
-
-        $requested = "$year-$month";
-        $trackingStart = Settings::get('tracking_start_month', date('Y-m'));
-
-        if ($requested <= $trackingStart) {
-            $startBal = self::getStartingBalanceForMonth($month, $year);
-            $allInc = self::getTotalIncome($month, $year);
-            $allExp = self::getTotalExpense($month, $year);
-            $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
-            $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
-
-            $result = round($startBal + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
-            self::$eomProjectionCache[$cacheKey] = $result;
-            return $result;
-        }
-
-        $prevDate = date('Y-m', strtotime("$requested-01 -1 month"));
-        [$prevYear, $prevMonth] = explode('-', $prevDate);
-
-        $prevEOM = self::getEOMProjection($prevMonth, $prevYear, $accountId);
-
-        $allInc = self::getTotalIncome($month, $year);
-        $allExp = self::getTotalExpense($month, $year);
-        $unpaidInc = self::getUnpaidRecurring('income', $month, $year, $accountId);
-        $unpaidExp = self::getUnpaidRecurring('expense', $month, $year, $accountId);
-
-        $result = round($prevEOM + $allInc - $allExp + $unpaidInc - $unpaidExp, 2);
-        self::$eomProjectionCache[$cacheKey] = $result;
-        return $result;
+        $accountId ??= Account::primaryId();
+        return self::projectedEndOfMonth($accountId, $month, $year);
     }
 
     // --- Commitments ---

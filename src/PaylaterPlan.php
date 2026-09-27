@@ -295,10 +295,25 @@ final class PaylaterPlan
             return 0.0;
         }
         $db = Database::getConnection();
+        $allocationStmt = $db->prepare("SELECT due_date, ROUND(SUM(amount - paid_amount), 2) AS remaining
+            FROM paylater_installments WHERE plan_id = ? AND status IN ('open', 'partial')
+            GROUP BY due_date ORDER BY due_date");
+        $allocationStmt->execute([$planId]);
+        $allocations = $allocationStmt->fetchAll(PDO::FETCH_ASSOC);
         $db->prepare("UPDATE paylater_installments SET paid_amount = amount, status = 'paid' WHERE plan_id = ? AND status IN ('open','partial')")->execute([$planId]);
         $db->prepare("UPDATE paylater_plans SET status = 'completed' WHERE id = ?")->execute([$planId]);
+        $transferId = 0;
         if ($fromAccountId > 0) {
-            Transfer::create($fromAccountId, (int) $plan['account_id'], $due, $date, 'Settle ' . ($plan['total_payable'] ? '' : '') . 'paylater plan', 'bill_payment');
+            $transferId = Transfer::create($fromAccountId, (int) $plan['account_id'], $due, $date, 'Settle ' . ($plan['total_payable'] ? '' : '') . 'paylater plan', 'bill_payment');
+        }
+        foreach ($allocations as $allocation) {
+            Bill::recordPaymentAllocation(
+                (int) $plan['account_id'],
+                (string) $allocation['due_date'],
+                $date,
+                (float) $allocation['remaining'],
+                $transferId,
+            );
         }
         Bill::sync((int) $plan['account_id']);
         return $due;

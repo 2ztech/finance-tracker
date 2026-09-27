@@ -3,6 +3,7 @@ name: QA
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -51,3 +52,38 @@ jobs:
             test-results
             QA/screenshots
           retention-days: 14
+
+  docker-smoke:
+    needs: qa
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image and verify fresh install and persistence
+        run: tests/docker-smoke.sh
+
+  docker-publish:
+    needs: qa
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build release image from tagged source
+        run: docker build --tag "2ztech/expenzz:${GITHUB_REF_NAME}" .
+      - name: Verify release image before publishing
+        env:
+          DOCKER_TEST_IMAGE: 2ztech/expenzz:${{ github.ref_name }}
+          DOCKER_TEST_SKIP_BUILD: '1'
+        run: tests/docker-smoke.sh
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - name: Publish version and latest tags
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          docker tag "2ztech/expenzz:${RELEASE_TAG}" 2ztech/expenzz:latest
+          docker push "2ztech/expenzz:${RELEASE_TAG}"
+          docker push 2ztech/expenzz:latest

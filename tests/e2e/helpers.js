@@ -1,7 +1,7 @@
 // Shared helpers for Playwright E2E specs.
 const { expect } = require('@playwright/test');
 
-async function login(page, username = 'admin', password = 'admin') {
+async function login(page, username = 'expenzz-e2e-user', password = 'e2e-test-password-2026') {
   await page.goto('/login');
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);

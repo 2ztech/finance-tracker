@@ -34,7 +34,7 @@ final class TestDb
     {
         $db = Database::getConnection();
         foreach ([
-            'paylater_installments', 'paylater_plans', 'bills', 'transfers',
+            'bill_payment_allocations', 'paylater_installments', 'paylater_plans', 'bills', 'transfers',
             'transactions', 'commitments', 'budgets', 'quick_templates',
             'accounts', 'login_attempts',
         ] as $table) {

@@ -10,7 +10,7 @@ test.describe('Authentication', () => {
 
   test('invalid credentials are rejected', async ({ page }) => {
     await page.goto('/login');
-    await page.fill('input[name="username"]', 'admin');
+    await page.fill('input[name="username"]', 'unknown-user');
     await page.fill('input[name="password"]', 'wrong-password');
     await page.click('button[type="submit"]');
     await expect(page.locator('body')).toContainText('Invalid credentials');

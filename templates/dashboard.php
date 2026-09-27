@@ -221,13 +221,22 @@ ob_start();
 </div>
 
 <?php $primaryId = Account::primaryId(); ?>
-<?php if ($primaryId !== null): $primaryAccount = Account::find($primaryId); $projectedEOM = Expense::projectedEndOfMonth($primaryId, $month, $year); ?>
+<?php if ($primaryId !== null): $primaryAccount = Account::find($primaryId); $eom = Expense::projectedEomBreakdown($primaryId, $month, $year); $projectedEOM = $eom['eom']; ?>
 <section class="rounded-xl border p-4" aria-label="Projected end of month" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
             <p class="text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted);">Projected end of month</p>
             <p class="mt-1 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($projectedEOM, 2) ?></p>
-            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)($primaryAccount['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> · current RM <?= number_format(Account::balance($primaryId), 2) ?> plus remaining recurring this month</p>
+            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)($primaryAccount['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> · by <?= date('j M Y', strtotime((string) $eom['month_end'])) ?></p>
+            <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style="color:var(--text-secondary);">
+                <span class="rounded px-1.5 py-0.5" style="background:var(--bg-hover);">RM <?= number_format($eom['balance'], 2) ?> balance</span>
+                <?php if ($eom['recurring_income'] > 0): ?><span>+RM <?= number_format($eom['recurring_income'], 2) ?> recurring in</span><?php endif; ?>
+                <?php if ($eom['recurring_expense'] > 0): ?><span>−RM <?= number_format($eom['recurring_expense'], 2) ?> recurring out</span><?php endif; ?>
+                <?php foreach ($eom['bills_by_account'] as $billAccount => $billAmount): ?>
+                    <span>−RM <?= number_format($billAmount, 2) ?> <?= htmlspecialchars((string) $billAccount, ENT_QUOTES, 'UTF-8') ?></span>
+                <?php endforeach; ?>
+                <span class="font-semibold" style="color:var(--text);">= RM <?= number_format($eom['eom'], 2) ?></span>
+            </div>
         </div>
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background:var(--accent-soft);color:var(--accent);">
             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 17l5-5 4 3 7-8M15 7h5v5"/></svg>

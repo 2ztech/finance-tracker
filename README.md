@@ -32,7 +32,26 @@ Unlike standard budget apps that just sum up monthly totals, Expenzz is built on
 
 ## Docker (Recommended)
 
+### Fresh installation
+
+Create an empty persistent data directory before starting the app:
+
 ```bash
+mkdir -p ./data
+docker compose up -d --build
+```
+
+Open [http://localhost:8000](http://localhost:8000) and create your first
+account on the setup screen. **There are no default credentials.** A fresh
+installation starts with the application's generic categories only; create
+your own financial accounts and records after setup.
+
+The SQLite database and backups live in `./data`, which is mounted into the
+container at `/var/www/html/data`. Keep this directory when replacing or
+updating the application image.
+
+```bash
+mkdir -p ./data
 docker run -d \
   -p 8000:80 \
   -v ./data:/var/www/html/data \
@@ -73,7 +92,24 @@ later from Settings.
 
 ## Data Persistence
 
-Your entire database lives in `data/finance.db`. When using Docker, mount the data directory as a volume to survive container rebuilds. Backup via the Settings page or just copy the file.
+Your entire database lives in `data/finance.db`. When using Docker, the data
+directory is persistent storage outside the image. Updates replace the
+application image and leave this directory in place.
+
+### Updating a deployed Docker Compose installation
+
+Pull and restart with the published image:
+
+```bash
+docker compose pull
+docker compose up -d --no-build
+```
+
+Do not remove the `data/` directory or its volume during normal updates. The
+repository's release workflow builds and checks the Docker image from the tagged
+source before publishing it to Docker Hub. Version tags use the `v*` pattern.
+The repository needs `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` Actions secrets
+for the release workflow to publish images.
 
 ## Testing / QA
 
@@ -88,6 +124,7 @@ npm test                    # full suite: backend + E2E
 npm run test:backend        # PHPUnit only (tests/Unit)
 npm run test:e2e            # Playwright, all projects (desktop + mobile)
 npm run test:e2e:mobile     # Playwright mobile project only
+tests/docker-smoke.sh      # Docker image fresh-install + persistence checks
 npm run lint:php            # php -l across src/public/templates/tests
 npm run test:db:reset       # reset the isolated E2E database
 npm run qa:serve            # run the app against the isolated test DB

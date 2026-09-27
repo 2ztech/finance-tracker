@@ -40,6 +40,59 @@ final class BillTest extends AppTestCase
         $this->assertMoney(80.0, (float) $stmt['amount_due']);
     }
 
+    public function testCreditStatementUsesCutoffAndDueDay(): void
+    {
+        $cc = Account::create([
+            'name' => 'TEST_Atome', 'kind' => 'credit', 'statement_day' => 15, 'due_day' => 26,
+        ]);
+        foreach ([
+            ['2026-08-16', 10.0], ['2026-09-15', 20.0],
+            ['2026-09-16', 30.0], ['2026-10-15', 40.0], ['2026-10-16', 50.0],
+        ] as [$date, $amount]) {
+            Expense::addTransaction($this->cat, $amount, 'expense', 'purchase', $date, $cc);
+        }
+        Bill::sync($cc);
+
+        $bills = [];
+        foreach (Bill::forAccount($cc) as $bill) $bills[$bill['due_date']] = $bill;
+        $this->assertMoney(30.0, (float) $bills['2026-09-26']['amount_due']);
+        $this->assertSame('2026-08-16', $bills['2026-09-26']['period_start']);
+        $this->assertSame('2026-09-15', $bills['2026-09-26']['period_end']);
+        $this->assertMoney(70.0, (float) $bills['2026-10-26']['amount_due']);
+        $this->assertMoney(50.0, (float) $bills['2026-11-26']['amount_due']);
+    }
+
+    public function testBillPaymentHistoryUsesPaymentDateForHistoricalOutstanding(): void
+    {
+        $cc = Account::create([
+            'name' => 'TEST_Atome_History', 'kind' => 'credit', 'statement_day' => 15, 'due_day' => 26,
+        ]);
+        Expense::addTransaction($this->cat, 300.0, 'expense', 'purchase', '2026-09-15', $cc);
+        Bill::sync($cc);
+        Bill::payDue($cc, '2026-09-26', 300.0, $this->savings, '2026-10-05');
+
+        $this->assertMoney(300.0, Bill::outstandingAsOf($cc, '2026-09-30'));
+        $this->assertMoney(0.0, Bill::outstandingAsOf($cc, '2026-10-31'));
+    }
+
+    public function testEditingCreditTransactionDateMovesItToTheCorrectStatement(): void
+    {
+        $cc = Account::create([
+            'name' => 'TEST_Atome_Edit', 'kind' => 'credit', 'statement_day' => 15, 'due_day' => 26,
+        ]);
+        Expense::addTransaction($this->cat, 100.0, 'expense', 'purchase', '2026-09-15', $cc);
+        Bill::sync($cc);
+        $txnId = (int) TestDb::scalar("SELECT id FROM transactions WHERE account_id = ?", [$cc]);
+
+        Expense::updateTransaction($txnId, $this->cat, 100.0, 'expense', 'purchase', '2026-09-16', $cc);
+        Bill::sync($cc);
+
+        $dueDates = array_column(Bill::forAccount($cc), 'due_date');
+        $this->assertNotContains('2026-09-26', $dueDates);
+        $this->assertContains('2026-10-26', $dueDates);
+        $this->assertMoney(100.0, (float) $this->billByDue($cc, '2026-10-26')['amount_due']);
+    }
+
     public function testCreditFullPaymentClearsOutstanding(): void
     {
         $cc = TestDb::makeCredit('TEST_Credit', 20, 5000.0);

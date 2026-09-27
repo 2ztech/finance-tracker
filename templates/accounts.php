@@ -192,6 +192,7 @@ ob_start();
                         <input type="number" min="1" max="31" name="due_day" id="acc_due" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
                     </div>
                 </div>
+                <p class="text-[11px]" style="color:var(--text-muted);">Credit cut-off: purchases on or before the Statement Day are due on the Due Day of the <b>same</b> month; later purchases roll into the next month (e.g. Statement Day 15, Due Day 26).</p>
                 <div class="acc-paylater grid grid-cols-2 gap-3">
                     <div>
                         <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">BNPL Mode</label>

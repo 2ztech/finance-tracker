@@ -183,6 +183,17 @@ final class Database
                 status TEXT NOT NULL DEFAULT 'open',
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
             )",
+            "CREATE TABLE IF NOT EXISTS bill_payment_allocations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                due_date TEXT NOT NULL,
+                paid_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                transfer_id INTEGER,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY (transfer_id) REFERENCES transfers(id) ON DELETE CASCADE
+            )",
             "CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)",
             "CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at)",
@@ -191,6 +202,7 @@ final class Database
             "CREATE INDEX IF NOT EXISTS idx_installments_plan ON paylater_installments(plan_id)",
             "CREATE INDEX IF NOT EXISTS idx_installments_due ON paylater_installments(due_date)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_account_due ON bills(account_id, due_date)",
+            "CREATE INDEX IF NOT EXISTS idx_bill_allocations_account_due_paid ON bill_payment_allocations(account_id, due_date, paid_date)",
         ];
 
         foreach ($queries as $query) {
@@ -279,6 +291,8 @@ final class Database
             }
         }
 
+        self::backfillBillPaymentAllocations($db);
+
         $stmt = $db->query("SELECT COUNT(*) FROM categories");
         if ($stmt->fetchColumn() == 0) {
             $defaultCategories = [
@@ -302,5 +316,63 @@ final class Database
         }
 
         Maintenance::run();
+    }
+
+    /** Best-effort date-linked history for bill payments recorded by older versions. */
+    private static function backfillBillPaymentAllocations(PDO $db): void
+    {
+        $marker = $db->query("SELECT value FROM settings WHERE key = 'bill_payment_allocations_backfilled'")->fetchColumn();
+        if ($marker !== false) {
+            return;
+        }
+
+        $rows = $db->query("SELECT t.id, t.date, t.to_account_id, t.amount, t.description, a.kind
+                            FROM transfers t JOIN accounts a ON a.id = t.to_account_id
+                            WHERE t.kind = 'bill_payment' ORDER BY t.date, t.id")->fetchAll(PDO::FETCH_ASSOC);
+        $insert = $db->prepare("INSERT OR IGNORE INTO bill_payment_allocations
+            (account_id, due_date, paid_date, amount, transfer_id, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+        $unmatchedSettlements = [];
+        foreach ($rows as $row) {
+            if (preg_match('/\\((\\d{4}-\\d{2}-\\d{2})\\)\\s*$/', (string) $row['description'], $match) !== 1) {
+                if ($row['kind'] === 'paylater' && str_starts_with((string) $row['description'], 'Settle ')) {
+                    $unmatchedSettlements[] = $row;
+                }
+                continue;
+            }
+            $dueDate = $match[1];
+            if (!checkdate((int) substr($dueDate, 5, 2), (int) substr($dueDate, 8, 2), (int) substr($dueDate, 0, 4))) {
+                continue;
+            }
+            $insert->execute([
+                (int) $row['to_account_id'], $dueDate, (string) $row['date'],
+                (float) $row['amount'], (int) $row['id'], date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        // Older plan settlements did not store the plan or installment date.
+        // Distribute those amounts over still-unattributed paid installments in
+        // due-date order as a best effort, preserving the payment's real date.
+        $paidGroups = $db->prepare("SELECT i.due_date, ROUND(SUM(i.paid_amount), 2) AS paid
+            FROM paylater_installments i JOIN paylater_plans p ON p.id = i.plan_id
+            WHERE p.account_id = ? GROUP BY i.due_date ORDER BY i.due_date");
+        $mapped = $db->prepare("SELECT COALESCE(SUM(amount), 0) FROM bill_payment_allocations WHERE account_id = ? AND due_date = ?");
+        foreach ($unmatchedSettlements as $row) {
+            $accountId = (int) $row['to_account_id'];
+            $remaining = (float) $row['amount'];
+            $paidGroups->execute([$accountId]);
+            foreach ($paidGroups->fetchAll(PDO::FETCH_ASSOC) as $group) {
+                if ($remaining <= 0.001) break;
+                $mapped->execute([$accountId, $group['due_date']]);
+                $available = max(0.0, (float) $group['paid'] - (float) $mapped->fetchColumn());
+                $allocation = min($remaining, $available);
+                if ($allocation <= 0.001) continue;
+                $insert->execute([
+                    $accountId, (string) $group['due_date'], (string) $row['date'],
+                    round($allocation, 2), (int) $row['id'], date('Y-m-d H:i:s'),
+                ]);
+                $remaining = round($remaining - $allocation, 2);
+            }
+        }
+        $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('bill_payment_allocations_backfilled', '1')")->execute();
     }
 }

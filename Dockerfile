@@ -15,8 +15,11 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Copy your application code into the container
-COPY . /var/www/html/
+# Copy only the runtime application. Runtime state and build/test files are
+# deliberately not copied into the immutable image.
+COPY src/ /var/www/html/src/
+COPY templates/ /var/www/html/templates/
+COPY public/ /var/www/html/public/
 
 # Set permissions for data directory so SQLite can write to it
 RUN mkdir -p /var/www/html/data && chown -R www-data:www-data /var/www/html/data
