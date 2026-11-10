@@ -228,6 +228,8 @@ final class Database
             "ALTER TABLE transactions ADD COLUMN commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL",
             "ALTER TABLE transactions ADD COLUMN commitment_period TEXT",
             "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE paylater_plans ADD COLUMN kind TEXT NOT NULL DEFAULT 'purchase'",
+            "ALTER TABLE paylater_plans ADD COLUMN description TEXT",
         ];
 
         foreach ($alterations as $alter) {

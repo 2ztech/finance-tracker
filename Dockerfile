@@ -15,6 +15,9 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
+# Allow larger database restores (upload size limits).
+COPY docker/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # Copy only the runtime application. Runtime state and build/test files are
 # deliberately not copied into the immutable image.
 COPY src/ /var/www/html/src/

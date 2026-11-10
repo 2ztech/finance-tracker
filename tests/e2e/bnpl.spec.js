@@ -72,7 +72,7 @@ test.describe('BNPL / bills', () => {
     });
 
     await page.goto('/bills');
-    await expect(page.locator('body')).toContainText('Installment Plans');
+    await expect(page.locator('body')).toContainText('BNPL purchases');
     await page.locator('form[action="/plans/settle"] button[type="submit"]').first().click();
     await confirmDialog(page);
     await page.waitForLoadState('networkidle');

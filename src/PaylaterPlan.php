@@ -36,18 +36,29 @@ final class PaylaterPlan
     }
 
     /** First due date for a purchase on an account. */
-    public static function firstDueDate(array $account, string $purchaseDate, ?int $offsetOverride = null): string
+    public static function firstDueDate(array $account, string $purchaseDate, ?int $offsetOverride = null, string $kind = 'purchase'): string
     {
         $p = explode('-', $purchaseDate);
         $y = (int) $p[0];
         $m = (int) $p[1];
         $d = (int) $p[2];
 
+        // Personal financing keeps its borrow-day schedule (next month, same
+        // day) and is never folded into the monthly BNPL statement day.
+        if ($kind === 'financing') {
+            $nm = $m + 1;
+            $ny = $y;
+            if ($nm > 12) { $nm = 1; $ny++; }
+            return self::clamped($ny, $nm, $d);
+        }
+
         $mode = $account['bnpl_mode'] ?? 'cycle';
         $offset = $offsetOverride ?? (int) $account['first_due_offset'];
 
         if ($mode === 'cycle') {
-            $dueDay = (int) ($account['due_day'] ?: $d);
+            // Monthly statement: all purchases in a month fall due on the
+            // account's due day (default 10) of the following month.
+            $dueDay = (int) ($account['due_day'] ?: 10);
             $nm = $m + 1;
             $ny = $y;
             if ($nm > 12) { $nm = 1; $ny++; }
@@ -86,7 +97,7 @@ final class PaylaterPlan
      *
      * @return int plan id
      */
-    public static function createPurchase(int $accountId, int $categoryId, string $description, string $purchaseDate, float $totalPayable, int $months, ?float $cashPrice = null, ?int $offsetOverride = null): int
+    public static function createPurchase(int $accountId, int $categoryId, string $description, string $purchaseDate, float $totalPayable, int $months, ?float $cashPrice = null, ?int $offsetOverride = null, string $kind = 'purchase'): int
     {
         $db = Database::getConnection();
         $account = Account::find($accountId);
@@ -96,7 +107,7 @@ final class PaylaterPlan
         $months = max(1, $months);
         $totalPayable = round($totalPayable, 2);
         $installment = round($totalPayable / $months, 2);
-        $firstDue = self::firstDueDate($account, $purchaseDate, $offsetOverride);
+        $firstDue = self::firstDueDate($account, $purchaseDate, $offsetOverride, $kind);
 
         // Purchase expense = cash price if provided, otherwise the full repayable.
         $purchaseAmount = $cashPrice !== null && $cashPrice > 0 ? round($cashPrice, 2) : $totalPayable;
@@ -113,8 +124,8 @@ final class PaylaterPlan
             $financingTxnId = (int) $db->lastInsertId();
         }
 
-        $planStmt = $db->prepare("INSERT INTO paylater_plans (account_id, purchase_txn_id, total_payable, cash_price, interest, months, installment_amount, first_due_date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
-        $planStmt->execute([$accountId, $purchaseTxnId, $totalPayable, $cashPrice, $interest, $months, $installment, $firstDue, date('Y-m-d H:i:s')]);
+        $planStmt = $db->prepare("INSERT INTO paylater_plans (account_id, purchase_txn_id, total_payable, cash_price, interest, months, installment_amount, first_due_date, kind, description, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
+        $planStmt->execute([$accountId, $purchaseTxnId, $totalPayable, $cashPrice, $interest, $months, $installment, $firstDue, $kind, $description, date('Y-m-d H:i:s')]);
         $planId = (int) $db->lastInsertId();
 
         $linkTxn = $db->prepare("UPDATE transactions SET plan_id = ? WHERE id = ?");
@@ -127,6 +138,93 @@ final class PaylaterPlan
         $dates = self::buildSchedule($firstDue, $months);
         $allocated = 0.0;
         foreach ($dates as $i => $due) {
+            $amt = ($i === $months - 1) ? round($totalPayable - $allocated, 2) : $installment;
+            $allocated += $amt;
+            $instStmt->execute([$planId, $i + 1, $due, $amt]);
+        }
+
+        Bill::sync($accountId);
+        return $planId;
+    }
+
+    /** Plans for an account filtered by kind ('purchase' | 'financing'). */
+    public static function forAccountByKind(int $accountId, string $kind): array
+    {
+        $db = Database::getConnection();
+        $kind = $kind === 'financing' ? 'financing' : 'purchase';
+        $stmt = $db->prepare("SELECT * FROM paylater_plans WHERE account_id = ? AND kind = ? ORDER BY id DESC");
+        $stmt->execute([$accountId, $kind]);
+        return $stmt->fetchAll();
+    }
+
+    /** Move a plan between BNPL and Personal Financing. */
+    public static function setKind(int $id, string $kind): bool
+    {
+        $kind = $kind === 'financing' ? 'financing' : 'purchase';
+        $db = Database::getConnection();
+        $ok = $db->prepare("UPDATE paylater_plans SET kind = ? WHERE id = ?")->execute([$kind, $id]);
+        if ($ok) {
+            $acc = $db->prepare("SELECT account_id FROM paylater_plans WHERE id = ?");
+            $acc->execute([$id]);
+            $accountId = (int) $acc->fetchColumn();
+            if ($accountId > 0) {
+                Bill::sync($accountId);
+            }
+        }
+        return $ok;
+    }
+
+    /**
+     * Record personal financing (a cash loan repaid monthly).
+     *
+     * Money flows like a bill payment, mirrored: a transfer from the provider
+     * account to the chosen savings account delivers the cash, and any fees are
+     * booked as a financing cost so the liability equals the amount repayable.
+     *
+     * @return int plan id
+     */
+    public static function createFinancing(int $accountId, string $description, float $totalPayable, int $months, float $cashReceived, int $savingsAccountId, string $borrowDate): int
+    {
+        $db = Database::getConnection();
+        $account = Account::find($accountId);
+        $savings = Account::find($savingsAccountId);
+        if ($account === null || $account['kind'] !== 'paylater' || $savings === null || $savings['kind'] !== 'savings' || $accountId === $savingsAccountId) {
+            return 0;
+        }
+
+        $description = trim($description) !== '' ? trim($description) : 'Personal Financing';
+        $months = max(1, min(120, $months));
+        $totalPayable = round($totalPayable, 2);
+        $cashReceived = round($cashReceived, 2);
+        if ($totalPayable <= 0 || $cashReceived <= 0) {
+            return 0;
+        }
+        $fees = round(max(0.0, $totalPayable - $cashReceived), 2);
+        $installment = round($totalPayable / $months, 2);
+        $firstDue = self::firstDueDate($account, $borrowDate, null, 'financing');
+
+        // Cash in: provider -> savings (mirror of a bill payment).
+        Transfer::create($accountId, $savingsAccountId, $cashReceived, $borrowDate, 'Financing disbursement (' . $description . ')', 'financing');
+
+        $purchaseTxnId = null;
+        if ($fees > 0) {
+            $finCat = self::financingCategoryId();
+            $ins = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, 'expense', ?, ?, ?)");
+            $ins->execute([$finCat, $fees, $description . ' (financing)', $borrowDate, $accountId]);
+            $purchaseTxnId = (int) $db->lastInsertId();
+        }
+
+        $planStmt = $db->prepare("INSERT INTO paylater_plans (account_id, purchase_txn_id, total_payable, cash_price, interest, months, installment_amount, first_due_date, kind, description, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'financing', ?, 'active', ?)");
+        $planStmt->execute([$accountId, $purchaseTxnId, $totalPayable, $cashReceived, $fees, $months, $installment, $firstDue, $description, date('Y-m-d H:i:s')]);
+        $planId = (int) $db->lastInsertId();
+
+        if ($purchaseTxnId !== null) {
+            $db->prepare("UPDATE transactions SET plan_id = ? WHERE id = ?")->execute([$planId, $purchaseTxnId]);
+        }
+
+        $instStmt = $db->prepare("INSERT INTO paylater_installments (plan_id, seq, due_date, amount) VALUES (?, ?, ?, ?)");
+        $allocated = 0.0;
+        foreach (self::buildSchedule($firstDue, $months) as $i => $due) {
             $amt = ($i === $months - 1) ? round($totalPayable - $allocated, 2) : $installment;
             $allocated += $amt;
             $instStmt->execute([$planId, $i + 1, $due, $amt]);
@@ -255,12 +353,12 @@ final class PaylaterPlan
         $removed = 0;
         foreach ($plans as $p) {
             $txnId = (int) ($p['purchase_txn_id'] ?? 0);
-            $exists = 0;
-            if ($txnId > 0) {
-                $check->execute([$txnId]);
-                $exists = (int) $check->fetchColumn();
+            // Plans with no linked purchase (e.g. fee-free financing) are valid.
+            if ($txnId <= 0) {
+                continue;
             }
-            if ($exists === 0) {
+            $check->execute([$txnId]);
+            if ((int) $check->fetchColumn() === 0) {
                 self::deletePlanData((int) $p['id']);
                 $removed++;
                 AppLog::info('orphan_plan_removed', ['plan_id' => (int) $p['id'], 'account_id' => $accountId]);

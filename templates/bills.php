@@ -19,7 +19,7 @@ if ($isLiability) {
     Bill::sync((int) $account['id']);
 }
 $bills = $isLiability ? Bill::forAccount((int) $account['id']) : [];
-$plans = $isPaylater ? PaylaterPlan::forAccount((int) $account['id']) : [];
+$plans = $isPaylater ? PaylaterPlan::forAccountByKind((int) $account['id'], 'purchase') : [];
 
 ob_start();
 ?>
@@ -46,36 +46,112 @@ ob_start();
         <p class="text-sm" style="color:var(--text-muted);">No bills yet. Add a purchase on this account from Transactions.</p>
     </div>
 <?php else: ?>
-    <div class="space-y-3">
-        <?php foreach ($bills as $b): ?>
-            <?php $pending = round((float) $b['amount_due'] - (float) $b['paid_amount'], 2); ?>
-            <div class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
-                <div>
-                    <p class="text-base font-semibold" style="color:var(--text);">Due <?= date('d M Y', strtotime($b['due_date'])) ?></p>
-                    <p class="text-xs" style="color:var(--text-muted);">
-                        RM <?= number_format($b['paid_amount'], 2) ?> paid of RM <?= number_format($b['amount_due'], 2) ?>
-                    </p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span class="rounded px-2 py-0.5 text-xs font-semibold" style="background:<?= $b['status'] === 'paid' ? 'var(--success-soft)' : ($b['status'] === 'partial' ? 'var(--accent-soft)' : 'var(--danger-soft)') ?>;color:<?= $b['status'] === 'paid' ? 'var(--success)' : ($b['status'] === 'partial' ? 'var(--accent)' : 'var(--danger)') ?>;">
-                        <?= ucfirst($b['status']) ?>
-                    </span>
-                    <?php if ($pending > 0): ?>
-                        <span class="text-lg font-bold" style="color:var(--expense);">RM <?= number_format($pending, 2) ?></span>
-                        <button type="button" onclick="openPay('<?= htmlspecialchars((string)$b['due_date'], ENT_QUOTES, 'UTF-8') ?>', <?= $pending ?>)" class="rounded-lg px-3 py-2 text-sm font-semibold text-white" style="background:var(--accent);">Pay</button>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    </div>
+    <?php
+    $bnplBills = [];
+    $financingBills = [];
+    foreach ($bills as $b) {
+        if (Bill::kindOf((int) $account['id'], (string) $b['due_date']) === 'financing') {
+            $financingBills[] = $b;
+        } else {
+            $bnplBills[] = $b;
+        }
+    }
+    $renderBills = function (array $list, string $emptyText, string $slug) use ($account) {
+        $unpaid = [];
+        $paid = [];
+        foreach ($list as $b) {
+            if ((string) ($b['status'] ?? '') === 'paid') {
+                $paid[] = $b;
+            } else {
+                $unpaid[] = $b;
+            }
+        }
+        // Unpaid: soonest upcoming first. Paid: most recent first.
+        usort($unpaid, fn($a, $b) => strcmp((string) $a['due_date'], (string) $b['due_date']));
+        usort($paid, fn($a, $b) => strcmp((string) $b['due_date'], (string) $a['due_date']));
+
+        if (empty($unpaid) && empty($paid)) {
+            echo '<p class="py-3 text-sm" style="color:var(--text-muted);">' . htmlspecialchars($emptyText, ENT_QUOTES, 'UTF-8') . '</p>';
+            return;
+        }
+
+        $renderCard = function (array $b) use ($account) {
+            $pending = round((float) $b['amount_due'] - (float) $b['paid_amount'], 2);
+            $items = Bill::details((int) $account['id'], $b);
+            echo '<div class="rounded-xl border p-4" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">';
+            echo '<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">';
+            echo '<div><p class="text-base font-semibold" style="color:var(--text);">Due ' . date('d M Y', strtotime((string) $b['due_date'])) . '</p>';
+            echo '<p class="text-xs" style="color:var(--text-muted);">RM ' . number_format((float) $b['paid_amount'], 2) . ' paid of RM ' . number_format((float) $b['amount_due'], 2) . '</p>';
+            if (!empty($b['period_start']) && !empty($b['period_end'])) {
+                echo '<p class="text-xs" style="color:var(--text-muted);">Statement ' . date('j M', strtotime((string) $b['period_start'])) . ' – ' . date('j M Y', strtotime((string) $b['period_end'])) . '</p>';
+            }
+            echo '</div>';
+            echo '<div class="flex items-center gap-3">';
+            $statusColor = $b['status'] === 'paid' ? 'var(--success-soft)' : ($b['status'] === 'partial' ? 'var(--accent-soft)' : 'var(--danger-soft)');
+            $statusText = $b['status'] === 'paid' ? 'var(--success)' : ($b['status'] === 'partial' ? 'var(--accent)' : 'var(--danger)');
+            echo '<span class="rounded px-2 py-0.5 text-xs font-semibold" style="background:' . $statusColor . ';color:' . $statusText . ';">' . ucfirst((string) $b['status']) . '</span>';
+            if ($pending > 0) {
+                echo '<span class="text-lg font-bold" style="color:var(--expense);">RM ' . number_format($pending, 2) . '</span>';
+                echo '<button type="button" onclick="openPay(\'' . htmlspecialchars((string) $b['due_date'], ENT_QUOTES, 'UTF-8') . '\', ' . $pending . ')" class="rounded-lg px-3 py-2 text-sm font-semibold text-white" style="background:var(--accent);">Pay</button>';
+            }
+            echo '</div></div>';
+            if (!empty($items)) {
+                echo '<details class="mt-3 border-t pt-2" style="border-color:var(--border-light);">';
+                echo '<summary class="cursor-pointer text-xs font-medium" style="color:var(--accent);">View details (' . count($items) . ' items)</summary>';
+                echo '<div class="mt-1">';
+                foreach ($items as $it) {
+                    $negative = (float) $it['amount'] < 0;
+                    echo '<div class="flex items-center justify-between gap-3 border-b py-1.5" style="border-color:var(--border-light);">';
+                    echo '<div class="min-w-0"><p class="truncate text-sm" style="color:var(--text);">' . htmlspecialchars((string) $it['title'], ENT_QUOTES, 'UTF-8') . '</p>';
+                    echo '<p class="text-[11px]" style="color:var(--text-muted);">' . htmlspecialchars((string) $it['meta'], ENT_QUOTES, 'UTF-8') . '</p></div>';
+                    echo '<span class="whitespace-nowrap text-sm font-semibold" style="color:' . ($negative ? 'var(--income)' : 'var(--text)') . ';">' . ($negative ? '−' : '') . 'RM ' . number_format(abs((float) $it['amount']), 2) . '</span>';
+                    echo '</div>';
+                }
+                echo '</div></details>';
+            }
+            echo '</div>';
+        };
+
+        echo '<div class="mb-3 inline-flex items-center gap-1 rounded-lg border p-1 text-xs" role="tablist" style="border-color:var(--border);">';
+        echo '<button type="button" class="bill-tab rounded-md px-3 py-1.5 font-semibold" data-group="' . $slug . '" data-show="unpaid" aria-pressed="true" style="background:var(--accent-soft);color:var(--accent);">Unpaid (' . count($unpaid) . ')</button>';
+        echo '<button type="button" class="bill-tab rounded-md px-3 py-1.5 font-medium" data-group="' . $slug . '" data-show="paid" aria-pressed="false" style="color:var(--text-secondary);">Paid (' . count($paid) . ')</button>';
+        echo '</div>';
+
+        echo '<div id="' . $slug . '-unpaid" class="space-y-3">';
+        if (empty($unpaid)) {
+            echo '<p class="py-3 text-sm" style="color:var(--text-muted);">No unpaid bills.</p>';
+        } else {
+            foreach ($unpaid as $b) { $renderCard($b); }
+        }
+        echo '</div>';
+
+        echo '<div id="' . $slug . '-paid" class="hidden space-y-3">';
+        if (empty($paid)) {
+            echo '<p class="py-3 text-sm" style="color:var(--text-muted);">No paid bills yet.</p>';
+        } else {
+            foreach ($paid as $b) { $renderCard($b); }
+        }
+        echo '</div>';
+    };
+    ?>
+    <section class="mb-8">
+        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">BNPL</h3>
+        <?php $renderBills($bnplBills, 'No BNPL bills.', 'bnpl'); ?>
+    </section>
+    <?php if ($isPaylater): ?>
+    <section>
+        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">Personal Financing</h3>
+        <?php $renderBills($financingBills, 'No personal financing bills.', 'financing'); ?>
+    </section>
+    <?php endif; ?>
 <?php endif; ?>
 
 <!-- Plans -->
 <?php if ($isPaylater): ?>
 <div class="mt-8">
-    <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">Installment Plans</h3>
+    <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">BNPL purchases</h3>
     <?php if (empty($plans)): ?>
-        <p class="text-sm" style="color:var(--text-muted);">No installment plans.</p>
+        <p class="text-sm" style="color:var(--text-muted);">No BNPL purchases.</p>
     <?php else: ?>
         <div class="space-y-3">
             <?php foreach ($plans as $p): ?>
@@ -104,6 +180,13 @@ ob_start();
                             </form>
                             <?php endif; ?>
                             <button type="button" onclick="openRefund(<?= (int)$p['id'] ?>, <?= $remaining ?>)" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="border-color:var(--border);color:var(--text-secondary);">Refund</button>
+                            <form method="POST" action="/plans/set-kind" class="inline" data-confirm="Move this plan to Personal Financing?" data-confirm-label="Move">
+                                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                                <input type="hidden" name="plan_id" value="<?= (int)$p['id'] ?>">
+                                <input type="hidden" name="kind" value="financing">
+                                <input type="hidden" name="return" value="/bills">
+                                <button type="submit" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="border-color:var(--border);color:var(--accent);">Move to Financing</button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -183,6 +266,25 @@ function openRefund(planId, remaining) {
 function closeRefund() { var m = document.getElementById('refundModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
 document.getElementById('payModal').addEventListener('click', function(e){ if(e.target===this) closePay(); });
 document.getElementById('refundModal').addEventListener('click', function(e){ if(e.target===this) closeRefund(); });
+
+document.querySelectorAll('.bill-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var group = btn.getAttribute('data-group');
+        var showPaid = btn.getAttribute('data-show') === 'paid';
+        document.querySelectorAll('.bill-tab[data-group="' + group + '"]').forEach(function (b) {
+            var active = b === btn;
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+            b.classList.toggle('font-semibold', active);
+            b.classList.toggle('font-medium', !active);
+            b.style.background = active ? 'var(--accent-soft)' : 'transparent';
+            b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+        });
+        var unpaid = document.getElementById(group + '-unpaid');
+        var paid = document.getElementById(group + '-paid');
+        if (unpaid) unpaid.classList.toggle('hidden', showPaid);
+        if (paid) paid.classList.toggle('hidden', !showPaid);
+    });
+});
 </script>
 
 <?php

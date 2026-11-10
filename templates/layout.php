@@ -16,6 +16,10 @@ $accountNav = [
     'bills'        => ['label' => 'Bills & BNPL', 'icon' => 'bill'],
     'recurring'    => ['label' => 'Recurring',    'icon' => 'calendar'],
 ];
+// Personal Financing is only offered for cycle paylater accounts (TikTok).
+if ($activeAccount && ($activeAccount['kind'] ?? '') === 'paylater' && ($activeAccount['bnpl_mode'] ?? '') === 'cycle') {
+    $accountNav['financing'] = ['label' => 'Personal Financing', 'icon' => 'wallet'];
+}
 $globalNav = [
     'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
     'categories' => ['label' => 'Categories', 'icon' => 'tag'],

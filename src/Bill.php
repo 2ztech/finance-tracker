@@ -26,31 +26,213 @@ final class Bill
         // Drop plans whose purchase transaction no longer exists.
         PaylaterPlan::reconcileAccount($accountId);
 
+        $account = Account::find($accountId);
+        $cycle = $account !== null && ($account['bnpl_mode'] ?? '') === 'cycle';
+        $dueDay = (int) (($account['due_day'] ?? 0) ?: 10);
+
+        // Re-bucket cycle BNPL instalments onto the monthly statement day (the
+        // account's due day within the installment's own month). Personal
+        // financing keeps its borrow-day date. Derived on the fly — installment
+        // rows are never rewritten.
+        $map = [];
         $stmt = $db->prepare("
-            SELECT i.due_date AS due_date,
-                   ROUND(SUM(i.amount), 2) AS amount_due,
-                   ROUND(SUM(i.paid_amount), 2) AS paid_amount
+            SELECT i.due_date, i.amount, i.paid_amount, p.kind, p.description
             FROM paylater_installments i
             JOIN paylater_plans p ON p.id = i.plan_id
             WHERE p.account_id = ?
-            GROUP BY i.due_date
-            ORDER BY i.due_date
         ");
         $stmt->execute([$accountId]);
-        $groups = $stmt->fetchAll();
+        foreach ($stmt->fetchAll() as $i) {
+            $billDue = self::billDateForInstallment((string) $i['due_date'], (string) $i['kind'], (string) $i['description'], $account);
+            if (!isset($map[$billDue])) {
+                $map[$billDue] = self::emptyBillBucket();
+            }
+            $map[$billDue]['due'] += (float) $i['amount'];
+            $map[$billDue]['paid'] += (float) $i['paid_amount'];
+            if (self::isFinancingPlan((string) $i['kind'], (string) $i['description'])) {
+                $map[$billDue]['financing'] = true;
+            } else {
+                $map[$billDue]['purchase'] = true;
+            }
+        }
 
+        // Cycle BNPL: one-off charges (not converted to an instalment plan) are
+        // part of the monthly statement, due on the account's due day next month.
+        if ($cycle) {
+            $o = $db->prepare("SELECT date, type, amount FROM transactions WHERE account_id = ? AND plan_id IS NULL");
+            $o->execute([$accountId]);
+            foreach ($o->fetchAll() as $t) {
+                $y = (int) substr((string) $t['date'], 0, 4);
+                $m = (int) substr((string) $t['date'], 5, 2);
+                $nm = $m + 1;
+                $ny = $y;
+                if ($nm > 12) { $nm = 1; $ny++; }
+                $billDue = PaylaterPlan::clamped($ny, $nm, $dueDay);
+                if (!isset($map[$billDue])) {
+                    $map[$billDue] = self::emptyBillBucket();
+                }
+                $map[$billDue]['due'] += ((string) $t['type'] === 'expense' ? 1 : -1) * (float) $t['amount'];
+                $map[$billDue]['oneoff'] = true;
+            }
+        }
+
+        ksort($map);
         $db->prepare("DELETE FROM bills WHERE account_id = ?")->execute([$accountId]);
-
-        $insert = $db->prepare("INSERT INTO bills (account_id, due_date, amount_due, paid_amount, status) VALUES (?, ?, ?, ?, ?)");
-        foreach ($groups as $g) {
-            $due = (float) $g['amount_due'];
-            $paid = (float) $g['paid_amount'];
-            $status = $paid >= $due - 0.001 ? 'paid' : ($paid > 0 ? 'partial' : 'open');
-            $insert->execute([$accountId, $g['due_date'], $due, $paid, $status]);
+        $insert = $db->prepare("INSERT INTO bills (account_id, period_start, period_end, due_date, amount_due, paid_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        foreach ($map as $due => $v) {
+            $amount = max(0.0, round((float) $v['due'], 2));
+            $paid = max(0.0, round((float) $v['paid'], 2));
+            $status = $paid >= $amount - 0.001 ? 'paid' : ($paid > 0 ? 'partial' : 'open');
+            // Monthly BNPL statements cover the previous calendar month; pure
+            // personal-financing bills keep no period.
+            $isFinancingOnly = $v['financing'] && !$v['purchase'] && !$v['oneoff'];
+            [$ps, $pe] = ($cycle && !$isFinancingOnly) ? self::statementPeriod((string) $due) : [null, null];
+            $insert->execute([$accountId, $ps, $pe, $due, $amount, $paid, $status]);
         }
 
         // Keep plan statuses in sync with their instalments.
         PaylaterPlan::refreshStatusesForAccount($accountId);
+    }
+
+    /** @return array{due:float,paid:float,purchase:bool,financing:bool,oneoff:bool} */
+    private static function emptyBillBucket(): array
+    {
+        return ['due' => 0.0, 'paid' => 0.0, 'purchase' => false, 'financing' => false, 'oneoff' => false];
+    }
+
+    private static function isFinancingPlan(string $kind, string $description): bool
+    {
+        // Classification is explicit so plans can be moved between types.
+        return $kind === 'financing';
+    }
+
+    /**
+     * Bill date for an installment. Cycle BNPL is bundled onto the account's
+     * due day within the installment's month; financing and per-purchase keep
+     * their own date.
+     */
+    private static function billDateForInstallment(string $dueDate, string $kind, string $description, ?array $account): string
+    {
+        if (self::isFinancingPlan($kind, $description)) {
+            return $dueDate;
+        }
+        if ($account !== null && ($account['bnpl_mode'] ?? '') === 'cycle') {
+            $dueDay = (int) (($account['due_day'] ?? 0) ?: 10);
+            $y = (int) substr($dueDate, 0, 4);
+            $m = (int) substr($dueDate, 5, 2);
+            return PaylaterPlan::clamped($y, $m, $dueDay);
+        }
+        return $dueDate;
+    }
+
+    /** Calendar month covered by a monthly statement due on $dueDate. */
+    private static function statementPeriod(string $dueDate): array
+    {
+        $y = (int) substr($dueDate, 0, 4);
+        $m = (int) substr($dueDate, 5, 2);
+        $pm = $m - 1;
+        $py = $y;
+        if ($pm < 1) { $pm = 12; $py--; }
+        $start = sprintf('%04d-%02d-01', $py, $pm);
+        return [$start, date('Y-m-t', strtotime($start))];
+    }
+
+    /** Classify a paylater bill: 'financing' when it holds only financing plans. */
+    public static function kindOf(int $accountId, string $dueDate): string
+    {
+        $db = Database::getConnection();
+        $account = Account::find($accountId);
+        $stmt = $db->prepare("
+            SELECT i.due_date, p.kind, p.description
+            FROM paylater_installments i
+            JOIN paylater_plans p ON p.id = i.plan_id
+            WHERE p.account_id = ?
+        ");
+        $stmt->execute([$accountId]);
+        $purchase = false;
+        $financing = false;
+        foreach ($stmt->fetchAll() as $r) {
+            if (self::billDateForInstallment((string) $r['due_date'], (string) $r['kind'], (string) $r['description'], $account) !== $dueDate) {
+                continue;
+            }
+            if (self::isFinancingPlan((string) $r['kind'], (string) $r['description'])) {
+                $financing = true;
+            } else {
+                $purchase = true;
+            }
+        }
+        return ($financing && !$purchase) ? 'financing' : 'bnpl';
+    }
+
+    /** Line items that make up a bill (paylater statements or credit cycles). */
+    public static function details(int $accountId, array $bill): array
+    {
+        $db = Database::getConnection();
+        $account = Account::find($accountId);
+        if ($account === null) {
+            return [];
+        }
+        $rows = [];
+
+        if ($account['kind'] === 'credit') {
+            $ps = $bill['period_start'] ?? null;
+            $pe = $bill['period_end'] ?? null;
+            if ($ps && $pe) {
+                $stmt = $db->prepare("SELECT date, description, type, amount FROM transactions WHERE account_id = ? AND date >= ? AND date <= ? ORDER BY date, id");
+                $stmt->execute([$accountId, $ps, $pe]);
+                foreach ($stmt->fetchAll() as $t) {
+                    $credit = (string) $t['type'] === 'income';
+                    $rows[] = [
+                        'title' => (string) ($t['description'] ?: 'Transaction'),
+                        'meta' => date('j M', strtotime((string) $t['date'])) . ($credit ? ' · credit' : ''),
+                        'amount' => round(($credit ? -1 : 1) * (float) $t['amount'], 2),
+                    ];
+                }
+            }
+            return $rows;
+        }
+
+        // Paylater: instalments that bucket into this bill date.
+        $stmt = $db->prepare("
+            SELECT i.seq, i.due_date, i.amount, i.paid_amount, p.months, p.kind, p.description, t.description AS purchase_desc
+            FROM paylater_installments i
+            JOIN paylater_plans p ON p.id = i.plan_id
+            LEFT JOIN transactions t ON t.id = p.purchase_txn_id
+            WHERE p.account_id = ?
+            ORDER BY p.id, i.seq
+        ");
+        $stmt->execute([$accountId]);
+        foreach ($stmt->fetchAll() as $i) {
+            if (self::billDateForInstallment((string) $i['due_date'], (string) $i['kind'], (string) $i['description'], $account) !== (string) $bill['due_date']) {
+                continue;
+            }
+            $isFinancing = self::isFinancingPlan((string) $i['kind'], (string) $i['description']);
+            $title = trim((string) ($i['description'] ?? ''));
+            if ($title === '') {
+                $title = (string) ($i['purchase_desc'] ?? 'Paylater plan');
+            }
+            $rows[] = [
+                'title' => $title,
+                'meta' => ($isFinancing ? 'Personal Financing' : 'BNPL') . ' · ' . (int) $i['seq'] . '/' . (int) $i['months'],
+                'amount' => round((float) $i['amount'], 2),
+            ];
+        }
+
+        // Cycle BNPL statements: one-off purchases in the covered month.
+        if (($account['bnpl_mode'] ?? '') === 'cycle' && !empty($bill['period_start']) && !empty($bill['period_end'])) {
+            $stmt = $db->prepare("SELECT date, description, type, amount FROM transactions WHERE account_id = ? AND plan_id IS NULL AND date >= ? AND date <= ? ORDER BY date, id");
+            $stmt->execute([$accountId, $bill['period_start'], $bill['period_end']]);
+            foreach ($stmt->fetchAll() as $t) {
+                $credit = (string) $t['type'] === 'income';
+                $rows[] = [
+                    'title' => (string) ($t['description'] ?: 'Purchase'),
+                    'meta' => 'BNPL · one-off · ' . date('j M', strtotime((string) $t['date'])),
+                    'amount' => round(($credit ? -1 : 1) * (float) $t['amount'], 2),
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /** Credit: group purchases through each statement cutoff into its due cycle. */
@@ -186,15 +368,22 @@ final class Bill
     public static function openInstallments(int $accountId, string $dueDate): array
     {
         $db = Database::getConnection();
+        $account = Account::find($accountId);
         $stmt = $db->prepare("
-            SELECT i.*
+            SELECT i.*, p.kind AS plan_kind, p.description AS plan_description
             FROM paylater_installments i
             JOIN paylater_plans p ON p.id = i.plan_id
-            WHERE p.account_id = ? AND i.due_date = ? AND i.status IN ('open', 'partial')
+            WHERE p.account_id = ? AND i.status IN ('open', 'partial')
             ORDER BY i.due_date, i.id
         ");
-        $stmt->execute([$accountId, $dueDate]);
-        return $stmt->fetchAll();
+        $stmt->execute([$accountId]);
+        $rows = [];
+        foreach ($stmt->fetchAll() as $r) {
+            if (self::billDateForInstallment((string) $r['due_date'], (string) $r['plan_kind'], (string) $r['plan_description'], $account) === $dueDate) {
+                $rows[] = $r;
+            }
+        }
+        return $rows;
     }
 
     /**

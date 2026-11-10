@@ -127,7 +127,17 @@ if ($route === 'settings/logs') {
 
 if ($route === 'settings/restore' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
-    if (!isset($_FILES['db_file']) || $_FILES['db_file']['error'] !== 0) {
+    if (!isset($_FILES['db_file'])) {
+        // The whole request is discarded when post_max_size is exceeded.
+        header('Location: /settings?msg=restore_too_large');
+        exit;
+    }
+    $uploadError = (int) $_FILES['db_file']['error'];
+    if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+        header('Location: /settings?msg=restore_too_large');
+        exit;
+    }
+    if ($uploadError !== UPLOAD_ERR_OK) {
         header('Location: /settings?msg=restore_error');
         exit;
     }
@@ -429,6 +439,51 @@ if ($route === 'plans/refund' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+if ($route === 'plans/set-kind' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $planId = (int) ($_POST['plan_id'] ?? 0);
+    $kind = ($_POST['kind'] ?? '') === 'financing' ? 'financing' : 'purchase';
+    $return = (string) ($_POST['return'] ?? '/bills');
+    if (!preg_match('#^/[a-z0-9/?=&._-]*$#i', $return)) {
+        $return = '/bills';
+    }
+    if ($planId > 0) {
+        // Fill a missing description from the linked purchase for nicer details.
+        $db = Database::getConnection();
+        $stmt = $db->prepare("SELECT p.description, t.description AS txn_desc FROM paylater_plans p LEFT JOIN transactions t ON t.id = p.purchase_txn_id WHERE p.id = ?");
+        $stmt->execute([$planId]);
+        $row = $stmt->fetch();
+        if ($row && trim((string) ($row['description'] ?? '')) === '') {
+            $desc = trim((string) ($row['txn_desc'] ?? ''));
+            if ($desc !== '') {
+                $db->prepare("UPDATE paylater_plans SET description = ? WHERE id = ?")->execute([$desc, $planId]);
+            }
+        }
+        PaylaterPlan::setKind($planId, $kind);
+        AppLog::info('plan_kind_changed', ['plan_id' => $planId, 'kind' => $kind]);
+    }
+    header('Location: ' . $return);
+    exit;
+}
+
+if ($route === 'financing/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $account = Account::active();
+    $accountId = $account ? (int) $account['id'] : 0;
+    $description = trim($_POST['description'] ?? '');
+    $total = (float) ($_POST['total_payable'] ?? 0);
+    $months = (int) ($_POST['months'] ?? 0);
+    $received = (float) ($_POST['cash_received'] ?? 0);
+    $savingsId = (int) ($_POST['savings_account_id'] ?? 0);
+    $date = $_POST['date'] ?? date('Y-m-d');
+    if ($accountId > 0 && $total > 0 && $months > 0 && $received > 0 && $savingsId > 0) {
+        $planId = PaylaterPlan::createFinancing($accountId, $description, $total, $months, $received, $savingsId, $date);
+        AppLog::info('financing_created', ['plan_id' => $planId, 'account_id' => $accountId, 'total' => $total, 'received' => $received]);
+    }
+    header('Location: /financing?msg=created');
+    exit;
+}
+
 if ($route === 'quick-template/add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     $type = $_POST['type'] ?? 'expense';
@@ -481,6 +536,7 @@ $routes = [
     'settings/duplicates' => 'duplicates.php',
     'accounts' => 'accounts.php',
     'bills' => 'bills.php',
+    'financing' => 'financing.php',
 ];
 
 if (array_key_exists($route, $routes)) {

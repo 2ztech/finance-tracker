@@ -24,6 +24,7 @@ $toasts = [
     'restore_success'  => ['Database restored successfully.', 'success'],
     'restore_error'    => ['Invalid file. Upload .db or .sqlite only.', 'danger'],
     'restore_invalid'  => ['Invalid or corrupt database file. Nothing was changed.', 'danger'],
+    'restore_too_large'=> ['The file is larger than the server upload limit. Increase upload_max_filesize and post_max_size, then retry.', 'danger'],
     'clean_success'    => ['Removed ' . max(0, (int) ($_GET['count'] ?? 0)) . ' duplicate(s).', 'success'],
     'settings_success' => ['Settings saved.', 'success'],
 ];
