@@ -9,6 +9,7 @@ $account = Account::active();
 $accountId = $account ? (int) $account['id'] : null;
 $isLiability = $account ? Account::isLiability($account) : false;
 $accounts = Account::all();
+$accountGroups = Institution::groupAccounts($accounts);
 
 $quickTemplates = QuickTemplate::getAll($accountId);
 
@@ -203,13 +204,13 @@ ob_start();
         <div>
             <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">From</label>
             <select name="from_account_id" class="w-full rounded-lg border px-2 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                <?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']===$accountId?'selected':'' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                <?php foreach ($accountGroups as $groupLabel => $groupAccounts): ?><optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>"><?php foreach ($groupAccounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']===$accountId?'selected':'' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?>
             </select>
         </div>
         <div>
             <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">To</label>
             <select name="to_account_id" class="w-full rounded-lg border px-2 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                <?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']!==$accountId?'':'disabled' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                <?php foreach ($accountGroups as $groupLabel => $groupAccounts): ?><optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>"><?php foreach ($groupAccounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']!==$accountId?'':'disabled' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?>
             </select>
         </div>
         <div>
@@ -294,7 +295,7 @@ ob_start();
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Account</label>
                 <select name="account_id" id="add_account_id" onchange="onAddAccountChange()" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                    <?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']===$accountId?'selected':'' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                    <?php foreach ($accountGroups as $groupLabel => $groupAccounts): ?><optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>"><?php foreach ($groupAccounts as $a): ?><option value="<?= (int)$a['id'] ?>" <?= (int)$a['id']===$accountId?'selected':'' ?>><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?>
                 </select>
             </div>
             <div>
@@ -479,7 +480,7 @@ ob_start();
                 <div>
                     <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Account</label>
                     <select name="account_id" id="edit_account_id" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                        <?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                        <?php foreach ($accountGroups as $groupLabel => $groupAccounts): ?><optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>"><?php foreach ($groupAccounts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?>
                     </select>
                 </div>
                 <div>

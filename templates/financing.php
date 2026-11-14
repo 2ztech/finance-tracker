@@ -1,21 +1,31 @@
 <?php
 require_once __DIR__ . '/../src/Account.php';
 require_once __DIR__ . '/../src/PaylaterPlan.php';
+require_once __DIR__ . '/../src/Institution.php';
 
 $account = Account::active();
 $accountId = $account ? (int) $account['id'] : 0;
-$isCyclePaylater = $account !== null && $account['kind'] === 'paylater' && ($account['bnpl_mode'] ?? '') === 'cycle';
+$role = $account['paylater_role'] ?? 'bnpl';
+$isFinancing = $account !== null
+    && $account['kind'] === 'paylater'
+    && in_array($role, ['financing', 'both'], true);
 
-$plans = $isCyclePaylater ? PaylaterPlan::forAccountByKind($accountId, 'financing') : [];
+$plans = $isFinancing ? PaylaterPlan::forAccountByKind($accountId, 'financing') : [];
 $savingsAccounts = array_values(array_filter(Account::all(), fn($a) => $a['kind'] === 'savings'));
+$savingsGroups = Institution::groupAccounts($savingsAccounts);
 $msg = $_GET['msg'] ?? '';
+
+if (!$isFinancing) {
+    header('Location: /dashboard');
+    exit;
+}
 
 ob_start();
 ?>
 
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
-        <h2 class="text-2xl font-bold" style="color:var(--text);">Personal Financing</h2>
+        <h2 class="text-2xl font-bold" style="color:var(--text);">Financing</h2>
         <p class="mt-0.5 text-sm" style="color:var(--text-secondary);">
             <?= $account ? htmlspecialchars((string) $account['name'], ENT_QUOTES, 'UTF-8') : 'No account' ?> · cash financing repaid monthly
         </p>
@@ -27,9 +37,9 @@ ob_start();
     <div class="mb-5 rounded-lg border px-4 py-3 text-sm" style="background:var(--success-soft);border-color:var(--success);color:var(--success);">Financing recorded.</div>
 <?php endif; ?>
 
-<?php if (!$isCyclePaylater): ?>
+<?php if (!$isFinancing): ?>
     <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
-        <p class="text-sm" style="color:var(--text-muted);">Personal Financing is available on cycle paylater accounts (e.g. TikTok). Switch to one from the sidebar.</p>
+        <p class="text-sm" style="color:var(--text-muted);">Financing is available on financing sections (Personal Financing / SLoan). Add one from Accounts.</p>
     </div>
 <?php else: ?>
 
@@ -56,6 +66,7 @@ ob_start();
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-bold" style="color:var(--expense);">RM <?= number_format($remaining, 2) ?> left</span>
+                                <?php if ($role === 'both'): ?>
                                 <form method="POST" action="/plans/set-kind" class="inline" data-confirm="Move this plan back to BNPL?" data-confirm-label="Move">
                                     <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                     <input type="hidden" name="plan_id" value="<?= (int) $p['id'] ?>">
@@ -63,6 +74,7 @@ ob_start();
                                     <input type="hidden" name="return" value="/financing">
                                     <button type="submit" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="border-color:var(--border);color:var(--text-secondary);">Move to BNPL</button>
                                 </form>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <?php if (!empty($insts)): ?>
@@ -91,7 +103,7 @@ ob_start();
                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                 <div>
                     <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Description</label>
-                    <input type="text" name="description" required placeholder="e.g. TikTok Personal Financing" class="w-full rounded-lg border px-3 py-2.5 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+                    <input type="text" name="description" required placeholder="e.g. Personal financing / loan" class="w-full rounded-lg border px-3 py-2.5 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -116,8 +128,12 @@ ob_start();
                 <div>
                     <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Cash in to</label>
                     <select name="savings_account_id" required class="w-full rounded-lg border px-3 py-2.5 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                        <?php foreach ($savingsAccounts as $s): ?>
-                            <option value="<?= (int) $s['id'] ?>" <?= (int) $s['id'] === $accountId ? '' : '' ?>><?= htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php foreach ($savingsGroups as $groupLabel => $groupAccounts): ?>
+                            <optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>">
+                                <?php foreach ($groupAccounts as $s): ?>
+                                    <option value="<?= (int) $s['id'] ?>"><?= htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </optgroup>
                         <?php endforeach; ?>
                     </select>
                 </div>

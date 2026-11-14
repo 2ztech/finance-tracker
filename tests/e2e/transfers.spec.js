@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, confirmDialog } = require('./helpers');
+const { login, createAccount, switchAccount, confirmDialog, currentDate } = require('./helpers');
 
 test.describe('Transfers', () => {
   test.beforeEach(async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('Transfers', () => {
     await page.selectOption('#transferForm select[name="from_account_id"]', { label: 'TEST_TR_A' });
     await page.selectOption('#transferForm select[name="to_account_id"]', { label: 'TEST_TR_B' });
     await page.fill('#transferForm input[name="amount"]', '300');
-    await page.fill('#transferForm input[name="date"]', '2026-09-15');
+    await page.fill('#transferForm input[name="date"]', currentDate());
     await page.fill('#transferForm input[name="description"]', 'e2e-move');
     await Promise.all([
       page.waitForLoadState('networkidle'),

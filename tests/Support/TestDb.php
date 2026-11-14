@@ -36,7 +36,7 @@ final class TestDb
         foreach ([
             'bill_payment_allocations', 'paylater_installments', 'paylater_plans', 'bills', 'transfers',
             'transactions', 'commitments', 'budgets', 'quick_templates',
-            'accounts', 'login_attempts',
+            'accounts', 'institutions', 'login_attempts',
         ] as $table) {
             $db->exec("DELETE FROM {$table}");
         }
@@ -45,6 +45,17 @@ final class TestDb
     public static function pdo(): PDO
     {
         return Database::getConnection();
+    }
+
+    public static function makeInstitution(string $name, string $color = '#4f6ef7'): int
+    {
+        return Institution::create(['name' => $name, 'color_hex' => $color]);
+    }
+
+    public static function makeSection(int $institutionId, array $data): int
+    {
+        $data['institution_id'] = $institutionId;
+        return Account::create($data);
     }
 
     public static function makeSavings(string $name, float $opening = 0.0, ?string $start = '2026-01'): int

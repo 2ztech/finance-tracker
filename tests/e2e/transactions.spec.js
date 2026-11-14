@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, addTransaction, confirmDialog } = require('./helpers');
+const { login, createAccount, switchAccount, addTransaction, confirmDialog, currentDate } = require('./helpers');
 
 test.describe('Transactions', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,14 +12,14 @@ test.describe('Transactions', () => {
 
     await addTransaction(page, {
       account: 'TEST_TX', type: 'income', amount: '500',
-      category: 'Salary', date: '2026-09-15', description: 'income-1',
+      category: 'Salary', date: currentDate(), description: 'income-1',
     });
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 500.00');
 
     await addTransaction(page, {
       account: 'TEST_TX', type: 'expense', amount: '100',
-      category: 'Food & Dining', date: '2026-09-15', description: 'expense-1',
+      category: 'Food & Dining', date: currentDate(), description: 'expense-1',
     });
     await page.goto('/dashboard');
     await expect(page.locator('body')).toContainText('RM 400.00');
@@ -51,7 +51,7 @@ test.describe('Transactions', () => {
     await switchAccount(page, 'TEST_TX_SEARCH');
     await addTransaction(page, {
       account: 'TEST_TX_SEARCH', type: 'expense', amount: '11',
-      category: 'Groceries', date: '2026-09-15', description: 'unique-search-token',
+      category: 'Groceries', date: currentDate(), description: 'unique-search-token',
     });
     await page.goto('/transactions');
     await page.fill('#filterSearch', 'unique-search-token');

@@ -31,7 +31,7 @@ $db = Database::getConnection();
 foreach ([
     'paylater_installments', 'paylater_plans', 'bills', 'transfers',
     'transactions', 'commitments', 'budgets', 'quick_templates',
-    'accounts', 'login_attempts', 'users',
+    'accounts', 'institutions', 'login_attempts', 'users',
 ] as $table) {
     $db->exec("DELETE FROM {$table}");
 }

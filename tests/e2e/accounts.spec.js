@@ -17,7 +17,9 @@ test.describe('Accounts', () => {
     await page.goto('/accounts');
     const trigger = page.getByRole('button', { name: '+ Add Account' });
     await trigger.click();
-    await expect(page.getByRole('dialog', { name: 'Add Account' })).toBeVisible();
+    await expect(page.locator('#templateModal')).toBeVisible();
+    await page.click('#templateModal >> text=Custom account');
+    await expect(page.locator('#accountModal')).toBeVisible();
     await expect(page.locator('#acc_name')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.locator('#accountModal')).toBeHidden();

@@ -513,8 +513,12 @@ final class Expense
      * only the current month can post, so normal runs and edits never inject
      * backdated transactions. Pass $backfillPast = true (only when a schedule is
      * first created with a past start date) to build history from the start.
+     *
+     * $lookbackMonths lets the automated daily run also cover recent months that
+     * were missed (e.g. the server was down over a month-end), without the deep
+     * history injection that $backfillPast provides.
      */
-    public static function processDueCommitments(bool $force = false, bool $backfillPast = false): void
+    public static function processDueCommitments(bool $force = false, bool $backfillPast = false, int $lookbackMonths = 0): void
     {
         $todayStr = date('Y-m-d');
         $db = Database::getConnection();
@@ -548,11 +552,15 @@ final class Expense
             $start = !empty($c['start_date']) ? new DateTime($c['start_date']) : new DateTime($todayStr);
             $start->modify('first day of this month');
             if (!$backfillPast) {
-                // Forward-only: never reach back before the current month.
-                $curMonthStart = new DateTime($todayStr);
-                $curMonthStart->modify('first day of this month');
-                if ($start < $curMonthStart) {
-                    $start = $curMonthStart;
+                // Forward-only plus an optional recent lookback so a missed
+                // month-end occurrence is caught on the next daily run.
+                $floor = new DateTime($todayStr);
+                $floor->modify('first day of this month');
+                if ($lookbackMonths > 0) {
+                    $floor->modify('-' . $lookbackMonths . ' months');
+                }
+                if ($start < $floor) {
+                    $start = $floor;
                 }
             }
             $endLimitStr = (!empty($c['end_date']) && $c['end_date'] < $todayStr) ? $c['end_date'] : $todayStr;

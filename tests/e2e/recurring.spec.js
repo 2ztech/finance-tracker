@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, confirmDialog } = require('./helpers');
+const { login, createAccount, switchAccount, confirmDialog, currentMonth, monthEndDueLabel } = require('./helpers');
 
 test.describe('Recurring items', () => {
   test.beforeEach(async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('Recurring items', () => {
     }
   }
 
-  async function addRecurring(page, { type = 'expense', name, amount, category, day = 31, start = '2026-09-01', end } = {}) {
+  async function addRecurring(page, { type = 'expense', name, amount, category, day = 31, start = `${currentMonth()}-01`, end } = {}) {
     await page.goto('/recurring');
     await page.selectOption('#form_type', type);
     await page.fill('#form_name', name);
@@ -38,7 +38,7 @@ test.describe('Recurring items', () => {
   }
 
   test('post now logs a transaction, clears Upcoming, and deleting reopens it', async ({ page }) => {
-    await createAccount(page, { name: 'REC_A', kind: 'savings', opening: '1000', start: '2026-09' });
+    await createAccount(page, { name: 'REC_A', kind: 'savings', opening: '1000', start: currentMonth() });
     await switchAccount(page, 'REC_A');
 
     await addRecurring(page, { name: 'RENT_E2E', amount: 300, category: 'Groceries', day: 31 });
@@ -56,7 +56,7 @@ test.describe('Recurring items', () => {
 
     // The current month's occurrence clears once paid (next month's stays).
     await page.goto('/dashboard');
-    await expect(upcomingSection(page)).not.toContainText('Due 30 Sep 2026');
+    await expect(upcomingSection(page)).not.toContainText(monthEndDueLabel());
 
     // Delete the posted transaction -> the month is uncovered again (Model 1).
     await page.goto('/transactions');
@@ -69,11 +69,11 @@ test.describe('Recurring items', () => {
     await page.goto('/recurring');
     await expect(itemCard(page, 'RENT_E2E').locator('button:has-text("Post now")')).toBeVisible();
     await page.goto('/dashboard');
-    await expect(upcomingSection(page)).toContainText('Due 30 Sep 2026');
+    await expect(upcomingSection(page)).toContainText(monthEndDueLabel());
   });
 
   test('editing the category propagates, and archive keeps history', async ({ page }) => {
-    await createAccount(page, { name: 'REC_B', kind: 'savings', opening: '1000', start: '2026-09' });
+    await createAccount(page, { name: 'REC_B', kind: 'savings', opening: '1000', start: currentMonth() });
     await switchAccount(page, 'REC_B');
     await addRecurring(page, { name: 'LOAN_E2E', amount: 100, category: 'Groceries', day: 31 });
 
@@ -107,12 +107,14 @@ test.describe('Recurring items', () => {
   test('main account drives the projected end-of-month card', async ({ page }) => {
     await page.goto('/accounts');
     await page.click('text=+ Add Account');
+    await page.click('#templateModal >> text=Custom account');
+    await expect(page.locator('#accountModal')).toBeVisible();
     await page.fill('#acc_name', 'REC_MAIN');
     await page.selectOption('#acc_kind', 'savings');
     await page.fill('#acc_opening', '500');
-    await page.fill('#acc_start', '2026-09');
+    await page.fill('#acc_start', currentMonth());
     await page.check('#acc_primary');
-    await page.click('button:has-text("Save Account")');
+    await page.click('#accountModal button[type="submit"]');
     await page.waitForLoadState('networkidle');
     await expect(page.locator('body')).toContainText('REC_MAIN');
 
@@ -123,11 +125,16 @@ test.describe('Recurring items', () => {
     await page.goto('/dashboard');
     const card = page.locator('section[aria-label="Projected end of month"]');
     await expect(card).toBeVisible();
-    await expect(card).toContainText('RM 1,300.00'); // 500 + 1000 - 200
+    // This test owns the balance + recurring components. The EOM value also
+    // subtracts every unpaid liability bill (from other specs in a shared DB),
+    // so assert the components rather than a global total.
+    await expect(card).toContainText('RM 500.00 balance');
+    await expect(card).toContainText('+RM 1,000.00 recurring in');
+    await expect(card).toContainText('−RM 200.00 recurring out');
   });
 
   test('start date is optional and adds no backdated entries', async ({ page }) => {
-    await createAccount(page, { name: 'REC_C', kind: 'savings', opening: '0', start: '2026-09' });
+    await createAccount(page, { name: 'REC_C', kind: 'savings', opening: '0', start: currentMonth() });
     await switchAccount(page, 'REC_C');
 
     await addRecurring(page, { name: 'OPT_E2E', amount: 20, category: 'Groceries', day: 31, start: '' });

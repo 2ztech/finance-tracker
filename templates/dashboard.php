@@ -3,6 +3,8 @@ require_once __DIR__ . '/../src/Account.php';
 require_once __DIR__ . '/../src/Expense.php';
 require_once __DIR__ . '/../src/Budget.php';
 require_once __DIR__ . '/../src/Bill.php';
+require_once __DIR__ . '/../src/Institution.php';
+require_once __DIR__ . '/../src/InstitutionTemplate.php';
 
 $m = Helper::parseMonth();
 $year = $m['year'];
@@ -15,6 +17,7 @@ $activeAccount = Account::active();
 $activeAccountId = $activeAccount ? (int) $activeAccount['id'] : null;
 $activeLiability = $activeAccount ? Account::isLiability($activeAccount) : false;
 $accounts = Account::all();
+$institutionGroups = Institution::grouped();
 $netWorth = Account::netWorth();
 $rangeStart = "$year-$month-01";
 $rangeEnd = date('Y-m-t', strtotime($rangeStart));
@@ -23,6 +26,15 @@ $prevEnd = date('Y-m-t', strtotime($m['prevMonth'] . '-01'));
 $activeMovements = $activeAccountId ? Account::movements($activeAccountId, $rangeStart, $rangeEnd) : ['income' => 0, 'expense' => 0, 'in' => 0];
 $previousMovements = $activeAccountId ? Account::movements($activeAccountId, $prevStart, $prevEnd) : ['income' => 0, 'expense' => 0, 'in' => 0];
 $activeBalance = $activeAccountId ? Account::balance($activeAccountId) : 0.0;
+$activeInstitution = $activeAccount ? Institution::forAccount($activeAccountId) : null;
+$activeLimit = $activeAccount ? (float) ($activeAccount['credit_limit'] ?? 0) : 0.0;
+$hasActiveLimit = $activeAccount !== null && $activeLiability && $activeLimit > 0;
+$activeAvailable = $hasActiveLimit ? max(0.0, $activeLimit - max(0.0, $activeBalance)) : 0.0;
+$activeUsedPct = $hasActiveLimit ? min(100.0, max(0.0, ($activeBalance / $activeLimit) * 100)) : 0.0;
+$activeCreditLabel = $activeAccount ? (string) $activeAccount['name'] : '';
+if ($activeInstitution && $activeCreditLabel !== '' && (string) $activeInstitution['name'] !== $activeCreditLabel) {
+    $activeCreditLabel = $activeInstitution['name'] . ' · ' . $activeCreditLabel;
+}
 $income = $activeMovements['income'];
 $expenses = $activeMovements['expense'];
 $prevIncome = $previousMovements['income'];
@@ -220,14 +232,16 @@ ob_start();
     </div>
 </div>
 
+<?php $showCredit = $hasActiveLimit; $hasEom = Account::primaryId() !== null; ?>
+<?php if ($hasEom || $showCredit): ?><div class="grid grid-cols-1 gap-4 <?= ($hasEom && $showCredit) ? 'xl:grid-cols-2' : '' ?>">
 <?php $primaryId = Account::primaryId(); ?>
-<?php if ($primaryId !== null): $primaryAccount = Account::find($primaryId); $eom = Expense::projectedEomBreakdown($primaryId, $month, $year); $projectedEOM = $eom['eom']; ?>
+<?php if ($primaryId !== null): $primaryAccount = Account::find($primaryId); $eom = Expense::projectedEomBreakdown($primaryId, $month, $year); $projectedEOM = $eom['eom']; $primaryInstitution = Institution::forAccount($primaryId); $primaryLabel = (string) ($primaryAccount['name'] ?? ''); if ($primaryInstitution && (string) $primaryInstitution['name'] !== $primaryLabel) { $primaryLabel = $primaryInstitution['name'] . ' · ' . $primaryLabel; } ?>
 <section class="rounded-xl border p-4" aria-label="Projected end of month" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
     <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
             <p class="text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted);">Projected end of month</p>
             <p class="mt-1 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($projectedEOM, 2) ?></p>
-            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars((string)($primaryAccount['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> · by <?= date('j M Y', strtotime((string) $eom['month_end'])) ?></p>
+            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars($primaryLabel, ENT_QUOTES, 'UTF-8') ?> · by <?= date('j M Y', strtotime((string) $eom['month_end'])) ?></p>
             <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style="color:var(--text-secondary);">
                 <span class="rounded px-1.5 py-0.5" style="background:var(--bg-hover);">RM <?= number_format($eom['balance'], 2) ?> balance</span>
                 <?php if ($eom['recurring_income'] > 0): ?><span>+RM <?= number_format($eom['recurring_income'], 2) ?> recurring in</span><?php endif; ?>
@@ -244,6 +258,28 @@ ob_start();
     </div>
 </section>
 <?php endif; ?>
+<?php if ($showCredit): ?>
+<section class="rounded-xl border p-4" aria-label="Credit limit" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
+    <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+            <p class="text-xs font-medium uppercase tracking-wide" style="color:var(--text-muted);">Credit limit</p>
+            <p class="mt-1 text-2xl font-bold" style="color:var(--text);">RM <?= number_format($activeAvailable, 2) ?> <span class="text-sm font-medium" style="color:var(--text-muted);">/ RM <?= number_format($activeLimit, 2) ?></span></p>
+            <p class="mt-0.5 text-xs" style="color:var(--text-muted);"><?= htmlspecialchars($activeCreditLabel, ENT_QUOTES, 'UTF-8') ?> · available / limit</p>
+            <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full" style="background:var(--bg-hover);">
+                <div style="width:<?= number_format($activeUsedPct, 1, '.', '') ?>%;height:100%;background:<?= $activeUsedPct >= 90 ? 'var(--danger)' : 'var(--accent)' ?>;"></div>
+            </div>
+            <div class="mt-1 flex items-center justify-between text-[11px]" style="color:var(--text-secondary);">
+                <span>RM <?= number_format(max(0.0, $activeBalance), 2) ?> outstanding</span>
+                <span><?= number_format($activeUsedPct, 0) ?>% used</span>
+            </div>
+        </div>
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background:var(--accent-soft);color:var(--accent);">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 8h18v11H3V8zm0 4h18M7 16h3"/></svg>
+        </span>
+    </div>
+</section>
+<?php endif; ?>
+</div><?php endif; ?>
 
 <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Financial summary">
     <?php
@@ -300,10 +336,24 @@ ob_start();
 
     <section class="rounded-xl border p-5 xl:col-span-4" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <div class="mb-4 flex items-center justify-between"><h3 class="text-base font-semibold">Accounts Overview</h3><a href="/accounts" class="text-sm font-medium" style="color:var(--accent);">See all</a></div>
-        <?php if (!$accounts): ?><p class="py-8 text-center text-sm" style="color:var(--text-muted);">No accounts yet. <a href="/accounts" style="color:var(--accent);">Add an account</a></p>
+        <?php if (!$institutionGroups): ?><p class="py-8 text-center text-sm" style="color:var(--text-muted);">No accounts yet. <a href="/accounts" style="color:var(--accent);">Add an account</a></p>
         <?php else: ?><div class="divide-y" style="--tw-divide-opacity:1;divide-color:var(--border-light);">
-            <?php foreach ($accounts as $a): $bal = Account::balance((int)$a['id']); $liability = Account::isLiability($a); $accountIcon = AccountIcon::for((string)$a['name'], (string)$a['kind'], (string)($a['color_hex'] ?? '')); ?>
-            <div class="flex items-center justify-between gap-2 py-2.5"><div class="flex min-w-0 items-center gap-2.5"><?php if (!empty($a['icon_data'])): ?><img class="h-8 w-8 shrink-0 rounded-lg object-contain" src="data:<?= htmlspecialchars((string)($a['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$a['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold" style="background:<?= $accountIcon['background'] ?>;color:<?= $accountIcon['foreground'] ?>;"><?= htmlspecialchars($accountIcon['mark'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?><div class="min-w-0"><p class="truncate text-sm font-medium"><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></p><p class="mt-0.5 text-xs capitalize" style="color:var(--text-muted);"><?= htmlspecialchars((string)$a['kind'], ENT_QUOTES, 'UTF-8') ?><?= $liability ? ' · outstanding' : '' ?></p></div></div><b class="whitespace-nowrap text-sm" style="color:<?= $liability ? 'var(--expense)' : 'var(--text)' ?>;">RM <?= number_format($bal, 2) ?></b></div>
+            <?php foreach ($institutionGroups as $inst): ?>
+                <?php
+                $instIconSrc = null;
+                if (!empty($inst['icon_data'])) {
+                    $instIconSrc = 'data:' . (string) ($inst['icon_mime'] ?? 'image/png') . ';base64,' . (string) $inst['icon_data'];
+                } else {
+                    $instIconSrc = InstitutionTemplate::logoUrlForName((string) $inst['name']);
+                }
+                ?>
+                <div class="flex items-center gap-2 pb-1 pt-3">
+                    <?php if ($instIconSrc): ?><img class="h-5 w-5 rounded object-contain" src="<?= htmlspecialchars($instIconSrc, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php endif; ?>
+                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--text-muted);"><?= htmlspecialchars((string) $inst['name'], ENT_QUOTES, 'UTF-8') ?></span>
+                </div>
+                <?php foreach ($inst['sections'] as $a): $bal = Account::balance((int)$a['id']); $liability = Account::isLiability($a); $accountIcon = AccountIcon::for((string)$a['name'], (string)$a['kind'], (string)($a['color_hex'] ?? '')); $sectionLabel = (string)$a['name']; $limitAmount = ($a['credit_limit'] ?? null) !== null ? (float) $a['credit_limit'] : 0.0; $hasLimit = $liability && $limitAmount > 0; $available = $hasLimit ? max(0.0, $limitAmount - max(0.0, $bal)) : 0.0; ?>
+                <div class="flex items-center justify-between gap-2 py-2"><div class="flex min-w-0 items-center gap-2.5"><?php if (!empty($a['icon_data'])): ?><img class="h-8 w-8 shrink-0 rounded-lg object-contain" src="data:<?= htmlspecialchars((string)($a['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$a['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php elseif ($instIconSrc): ?><img class="h-8 w-8 shrink-0 rounded-lg object-contain" src="<?= htmlspecialchars($instIconSrc, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold" style="background:<?= $accountIcon['background'] ?>;color:<?= $accountIcon['foreground'] ?>;"><?= htmlspecialchars($accountIcon['mark'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?><div class="min-w-0"><p class="truncate text-sm font-medium"><?= htmlspecialchars($sectionLabel, ENT_QUOTES, 'UTF-8') ?></p><p class="mt-0.5 text-xs capitalize" style="color:var(--text-muted);"><?= htmlspecialchars((string)$a['kind'], ENT_QUOTES, 'UTF-8') ?><?= $liability ? ' · outstanding' : '' ?><?= $hasLimit ? ' · RM ' . number_format($available, 2) . ' available' : '' ?></p></div></div><b class="whitespace-nowrap text-sm" style="color:<?= $liability ? 'var(--expense)' : 'var(--text)' ?>;">RM <?= number_format($bal, 2) ?></b></div>
+                <?php endforeach; ?>
             <?php endforeach; ?>
         </div><?php endif; ?>
     </section>

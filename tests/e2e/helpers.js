@@ -1,6 +1,32 @@
 // Shared helpers for Playwright E2E specs.
 const { expect } = require('@playwright/test');
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Current month as YYYY-MM (matches the server's default listing month). */
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Today as YYYY-MM-DD. */
+function currentDate() {
+  const d = new Date();
+  return `${currentMonth()}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * "Due <last day> <Mon> <Year>" for the current month (offset 0) or a later
+ * month. Day-31 schedules clamp to the month's last day.
+ */
+function monthEndDueLabel(offset = 0) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset + 1);
+  d.setDate(0);
+  return `Due ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 async function login(page, username = 'expenzz-e2e-user', password = 'e2e-test-password-2026') {
   await page.goto('/login');
   await page.fill('input[name="username"]', username);
@@ -17,9 +43,11 @@ async function logout(page) {
 }
 
 async function createAccount(page, opts) {
-  const { name, kind = 'savings', opening = '0', start = '2026-01', dueDay = '', bnpl = 'cycle', offset = '1', limit = '' } = opts;
+  const { name, kind = 'savings', opening = '0', start = '2026-01', dueDay = '', bnpl = 'cycle', offset = '1', limit = '', role } = opts;
   await page.goto('/accounts');
   await page.click('text=+ Add Account');
+  await expect(page.locator('#templateModal')).toBeVisible();
+  await page.click('#templateModal >> text=Custom account');
   await expect(page.locator('#accountModal')).toBeVisible();
   await page.fill('#acc_name', name);
   await page.selectOption('#acc_kind', kind);
@@ -29,22 +57,26 @@ async function createAccount(page, opts) {
   } else {
     if (dueDay !== '') await page.fill('#acc_due', String(dueDay));
     if (kind === 'paylater') {
+      if (role) await page.selectOption('#acc_role', role);
+      await page.$eval('#acc_advanced', (el) => { el.open = true; });
       await page.selectOption('#acc_bnpl', bnpl);
       await page.selectOption('#acc_offset', String(offset));
     }
     if (limit !== '') await page.fill('#acc_limit', String(limit));
     if (opening) await page.fill('#acc_opening', String(opening));
   }
-  await page.click('button:has-text("Save Account")');
+  await page.click('#accountModal button[type="submit"]');
   await page.waitForLoadState('networkidle');
   await expect(page.locator('body')).toContainText(name);
 }
 
 async function switchAccount(page, name) {
-  await page.selectOption('select[name="account_id"]', { label: name });
-  // The select auto-submits a form; wait for the resulting navigation.
-  await page.waitForLoadState('load');
-  await page.waitForTimeout(200);
+  await page.goto('/accounts');
+  const row = page.locator('[data-section-row]', { hasText: name }).first();
+  const switchButton = row.locator('form[action="/accounts/activate"] button');
+  if (await switchButton.count()) {
+    await Promise.all([page.waitForLoadState('load'), switchButton.click()]);
+  }
 }
 
 async function addTransaction(page, opts) {
@@ -84,4 +116,7 @@ async function confirmDialog(page) {
   await page.click('#appDialogAccept');
 }
 
-module.exports = { login, logout, createAccount, switchAccount, addTransaction, accountBalance, confirmDialog };
+module.exports = {
+  login, logout, createAccount, switchAccount, addTransaction, accountBalance, confirmDialog,
+  currentMonth, currentDate, monthEndDueLabel,
+};

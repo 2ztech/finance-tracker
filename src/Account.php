@@ -4,15 +4,37 @@ declare(strict_types=1);
 
 final class Account
 {
-    public static function all(bool $includeArchived = false): array
+    public static function all(bool $includeArchived = false, ?int $institutionId = null): array
     {
         $db = Database::getConnection();
         $sql = "SELECT * FROM accounts";
+        $where = [];
+        $params = [];
         if (!$includeArchived) {
-            $sql .= " WHERE archived = 0";
+            $where[] = "archived = 0";
+        }
+        if ($institutionId !== null) {
+            $where[] = "institution_id = ?";
+            $params[] = $institutionId;
+        }
+        if ($where !== []) {
+            $sql .= " WHERE " . implode(' AND ', $where);
         }
         $sql .= " ORDER BY sort_order, id";
-        return $db->query($sql)->fetchAll();
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** Sections belonging to an institution (the user-facing account). */
+    public static function forInstitution(int $institutionId, bool $includeArchived = false): array
+    {
+        return self::all($includeArchived, $institutionId);
+    }
+
+    public static function institution(int $accountId): ?array
+    {
+        return Institution::forAccount($accountId);
     }
 
     public static function find(int $id): ?array
@@ -27,16 +49,37 @@ final class Account
     public static function create(array $d): int
     {
         $db = Database::getConnection();
+
+        // Sections always belong to an institution. Callers that only create a
+        // standalone account (legacy custom form, tests) get one named after it.
+        $institutionId = isset($d['institution_id']) && (int) $d['institution_id'] > 0
+            ? (int) $d['institution_id']
+            : null;
+        if ($institutionId === null) {
+            // The section's uploaded icon belongs to the section; the new
+            // institution starts without one (it can be added in Edit Account).
+            $institutionId = Institution::create([
+                'name' => (string) ($d['name'] ?? 'Account'),
+                'color_hex' => $d['color_hex'] ?? '#4f6ef7',
+            ]);
+        }
+
+        $kind = (string) ($d['kind'] ?? '');
+        $role = $kind === 'paylater'
+            ? (in_array($d['paylater_role'] ?? '', ['bnpl', 'financing', 'both'], true) ? $d['paylater_role'] : 'bnpl')
+            : null;
         $stmt = $db->prepare("
             INSERT INTO accounts
-                (name, kind, color_hex, icon_data, icon_mime, bnpl_mode, statement_day, due_day, first_due_offset,
-                 allow_partial, no_interest_months, credit_limit, opening_balance, start_month,
+                (institution_id, name, kind, paylater_role, color_hex, icon_data, icon_mime, bnpl_mode, statement_day, due_day,
+                 first_due_offset, allow_partial, no_interest_months, credit_limit, opening_balance, start_month,
                  archived, sort_order, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         ");
         $stmt->execute([
+            $institutionId,
             $d['name'],
             $d['kind'],
+            $role,
             $d['color_hex'] ?? '#4f6ef7',
             $d['icon_data'] ?? null,
             $d['icon_mime'] ?? 'image/png',
@@ -64,6 +107,8 @@ final class Account
         $db = Database::getConnection();
         $stmt = $db->prepare("
             UPDATE accounts SET
+                institution_id = COALESCE(?, institution_id),
+                paylater_role = CASE WHEN ? = 'paylater' THEN COALESCE(?, paylater_role) ELSE NULL END,
                 name = ?, kind = ?, color_hex = ?, icon_data = CASE WHEN ? = '1' THEN NULL WHEN ? IS NOT NULL THEN ? ELSE icon_data END,
                 icon_mime = CASE WHEN ? = '1' THEN 'image/png' WHEN ? IS NOT NULL THEN ? ELSE icon_mime END,
                 bnpl_mode = ?, statement_day = ?, due_day = ?,
@@ -71,7 +116,12 @@ final class Account
                 opening_balance = ?, start_month = ?, archived = ?, sort_order = ?
             WHERE id = ?
         ");
+        $kind = (string) ($d['kind'] ?? '');
+        $role = in_array($d['paylater_role'] ?? '', ['bnpl', 'financing', 'both'], true) ? $d['paylater_role'] : null;
         $ok = $stmt->execute([
+            isset($d['institution_id']) && (int) $d['institution_id'] > 0 ? (int) $d['institution_id'] : null,
+            $kind,
+            $role,
             $d['name'],
             $d['kind'],
             $d['color_hex'] ?? '#4f6ef7',
@@ -133,11 +183,34 @@ final class Account
 
     public static function activeId(): ?int
     {
-        $id = isset($_SESSION['active_account_id']) ? (int) $_SESSION['active_account_id'] : 0;
-        if ($id > 0 && self::find($id) !== null) {
+        $id = (int) ($_SESSION['active_account_id'] ?? 0);
+        $institutionId = (int) ($_SESSION['active_institution_id'] ?? 0);
+        $account = $id > 0 ? self::find($id) : null;
+
+        if ($account !== null && ($institutionId === 0 || (int) ($account['institution_id'] ?? 0) === $institutionId)) {
+            if ($institutionId === 0) {
+                $institution = Institution::forAccount($id);
+                if ($institution !== null) {
+                    $_SESSION['active_institution_id'] = (int) $institution['id'];
+                }
+            }
             return $id;
         }
-        return self::defaultId();
+
+        if ($institutionId > 0 && ($section = Institution::defaultSection($institutionId)) !== null) {
+            $_SESSION['active_account_id'] = (int) $section['id'];
+            return (int) $section['id'];
+        }
+
+        $default = self::defaultId();
+        if ($default !== null) {
+            $_SESSION['active_account_id'] = $default;
+            $institution = Institution::forAccount($default);
+            if ($institution !== null) {
+                $_SESSION['active_institution_id'] = (int) $institution['id'];
+            }
+        }
+        return $default;
     }
 
     public static function active(): ?array
@@ -148,8 +221,14 @@ final class Account
 
     public static function setActive(int $id): void
     {
-        if (self::find($id) !== null) {
-            $_SESSION['active_account_id'] = $id;
+        $account = self::find($id);
+        if ($account === null) {
+            return;
+        }
+        $_SESSION['active_account_id'] = $id;
+        $institution = Institution::forAccount($id);
+        if ($institution !== null) {
+            $_SESSION['active_institution_id'] = (int) $institution['id'];
         }
     }
 

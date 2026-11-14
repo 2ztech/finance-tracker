@@ -67,4 +67,40 @@ final class IconCatalog
         $path = self::PATHS[$key] ?? self::PATHS['other'];
         return '<svg class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $path . '</svg>';
     }
+
+    /** Bundled raster category icons (public/assets/icons). */
+    private const BUNDLED = [
+        'barber' => 'barber.png',
+        'bike' => 'bike.png',
+        'laundry' => 'laundry.png',
+        'money-jar' => 'money-jar.png',
+    ];
+
+    /** @return array<string, string> key => filename */
+    public static function bundled(): array
+    {
+        return self::BUNDLED;
+    }
+
+    public static function hasBundled(string $key): bool
+    {
+        return isset(self::BUNDLED[$key]);
+    }
+
+    /** @return array{data:string,mime:string}|null */
+    public static function bundledData(string $key): ?array
+    {
+        if (!isset(self::BUNDLED[$key])) {
+            return null;
+        }
+        $file = dirname(__DIR__) . '/public/assets/icons/' . self::BUNDLED[$key];
+        if (!is_file($file)) {
+            return null;
+        }
+        $bytes = file_get_contents($file);
+        if ($bytes === false) {
+            return null;
+        }
+        return ['data' => base64_encode($bytes), 'mime' => 'image/png'];
+    }
 }

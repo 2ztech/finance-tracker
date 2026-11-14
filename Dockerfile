@@ -1,4 +1,4 @@
-FROM php:8.3-apache
+FROM php:8.3.36-apache
 
 # Install SQLite and enable PHP extensions
 RUN apt-get update && apt-get install -y \
@@ -17,6 +17,7 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 
 # Allow larger database restores (upload size limits).
 COPY docker/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY docker/security.ini /usr/local/etc/php/conf.d/security.ini
 
 # Copy only the runtime application. Runtime state and build/test files are
 # deliberately not copied into the immutable image.

@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount } = require('./helpers');
+const { login, createAccount, switchAccount, currentDate, currentMonth } = require('./helpers');
 
 // Permanent regression coverage for the mandatory Type → Category rule.
 test.describe('Type → Category filtering', () => {
@@ -41,7 +41,7 @@ test.describe('Type → Category filtering', () => {
     await switchAccount(page, 'TYPCAT_BE');
     await page.goto('/transactions');
 
-    const result = await page.evaluate(async () => {
+    const result = await page.evaluate(async ({ date, month }) => {
       const csrf = document.querySelector('input[name="csrf_token"]').value;
       const accountId = document.querySelector('#add_account_id').value;
       // "Food & Dining" is an expense category; pair it with type=income (invalid).
@@ -50,12 +50,12 @@ test.describe('Type → Category filtering', () => {
       const body = new URLSearchParams({
         csrf_token: csrf, action: 'add_transaction', account_id: accountId,
         type: 'income', amount: '5', description: 'INVALID_COMBO',
-        date: '2026-09-15', category_id: expenseOpt ? expenseOpt.value : '0',
+        date, category_id: expenseOpt ? expenseOpt.value : '0',
       });
-      const res = await fetch('/transactions?month=2026-09', { method: 'POST', body, redirect: 'follow' });
+      const res = await fetch(`/transactions?month=${month}`, { method: 'POST', body, redirect: 'follow' });
       const text = await res.text();
       return { url: res.url, text };
-    });
+    }, { date: currentDate(), month: currentMonth() });
     // The handler must redirect with the invalid_category flag (no insert).
     expect(result.url).toContain('invalid_category');
     expect(result.text).toContain('does not match the transaction type');
@@ -73,7 +73,7 @@ test.describe('Type → Category filtering', () => {
     await page.selectOption('#add_type', 'expense');
     await page.fill('#add_amount', '12');
     await page.selectOption('#add_category_id', { label: 'Food & Dining' });
-    await page.fill('#add_date', '2026-09-15');
+    await page.fill('#add_date', currentDate());
     await page.fill('#add_description', 'EDIT_TYPE_TX');
     await Promise.all([page.waitForLoadState('load'), page.click('#addRecordForm button[type="submit"]')]);
 

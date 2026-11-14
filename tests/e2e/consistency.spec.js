@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login, createAccount, switchAccount, addTransaction, confirmDialog } = require('./helpers');
+const { login, createAccount, switchAccount, addTransaction, confirmDialog, currentDate } = require('./helpers');
 
 test.describe('Cross-page consistency', () => {
   test.beforeEach(async ({ page }) => {
@@ -39,7 +39,7 @@ test.describe('Cross-page consistency', () => {
 
     await addTransaction(page, {
       account: 'CONS_BUD', type: 'expense', amount: '40',
-      category: 'Groceries', date: '2026-09-15', description: 'CONS_TX',
+      category: 'Groceries', date: currentDate(), description: 'CONS_TX',
     });
 
     await page.goto('/dashboard');

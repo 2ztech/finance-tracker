@@ -24,6 +24,17 @@ session_set_cookie_params([
 ]);
 session_start();
 
+// Security headers for dynamic responses. The app uses inline styles/scripts,
+// so the CSP permits 'unsafe-inline'; framing and embedding are blocked.
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+header("Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self'");
+if ($secureCookie) {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
+
 // Auto-load core classes
 spl_autoload_register(function ($class_name) {
 
@@ -65,7 +76,9 @@ if (!Auth::isLoggedIn() && $route !== 'login') {
 }
 
 if (Auth::isLoggedIn()) {
-    Expense::processDueCommitments();
+    // Daily run also covers the previous month so a missed month-end posting
+    // (e.g. server down) is created the next time the app is opened.
+    Expense::processDueCommitments(false, false, 1);
 }
 
 // Define custom routes inside `index.php`
@@ -88,11 +101,11 @@ if ($route === 'settings/export') {
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="finance_transactions_' . date('Y-m-d_Hi') . '.csv"');
     $db = Database::getConnection();
-    $stmt = $db->query("SELECT t.date, t.type, t.amount, c.name as category_name, t.description, a.name as account_name FROM transactions t LEFT JOIN categories c ON t.category_id = c.id LEFT JOIN accounts a ON a.id = t.account_id ORDER BY t.date DESC");
+    $stmt = $db->query("SELECT t.date, t.type, t.amount, c.name as category_name, t.description, i.name as institution_name, a.name as account_name FROM transactions t LEFT JOIN categories c ON t.category_id = c.id LEFT JOIN accounts a ON a.id = t.account_id LEFT JOIN institutions i ON i.id = a.institution_id ORDER BY t.date DESC");
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Date', 'Type', 'Amount', 'Category', 'Description', 'Account']);
+    fputcsv($output, ['Date', 'Type', 'Amount', 'Category', 'Description', 'Account', 'Section']);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        fputcsv($output, [$row['date'], $row['type'], $row['amount'], $row['category_name'], $row['description'], $row['account_name']]);
+        fputcsv($output, [$row['date'], $row['type'], $row['amount'], $row['category_name'], $row['description'], $row['institution_name'], $row['account_name']]);
     }
     fclose($output);
     exit;
@@ -204,33 +217,66 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $db = Database::getConnection();
             $db->beginTransaction();
             try {
-                fgetcsv($handle);
+                $header = fgetcsv($handle);
+                $idx = [];
+                if (is_array($header)) {
+                    foreach ($header as $i => $h) {
+                        $idx[strtolower(trim((string) $h))] = $i;
+                    }
+                }
+                $pick = static function (array $row, array $idx, string $name, int $fallback): string {
+                    $i = $idx[$name] ?? null;
+                    if ($i !== null && isset($row[$i])) {
+                        return trim((string) $row[$i]);
+                    }
+                    return isset($row[$fallback]) ? trim((string) $row[$fallback]) : '';
+                };
                 $stmtCat = $db->prepare("SELECT id FROM categories WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND type = ? LIMIT 1");
                 $stmtCreateCat = $db->prepare("INSERT INTO categories (name, type, color_hex) VALUES (?, ?, ?)");
                 $stmtInsert = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmtCheck = $db->prepare("SELECT 1 FROM transactions WHERE DATE(date) = DATE(?) AND ABS(amount - ?) < 0.01 AND type = ? AND TRIM(LOWER(description)) = TRIM(LOWER(?)) LIMIT 1");
                 $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) LIMIT 1");
+                $stmtAccSection = $db->prepare("SELECT a.id FROM accounts a JOIN institutions i ON i.id = a.institution_id WHERE TRIM(LOWER(i.name)) = TRIM(LOWER(?)) AND TRIM(LOWER(a.name)) = TRIM(LOWER(?)) LIMIT 1");
+                $stmtInst = $db->prepare("SELECT a.id FROM accounts a JOIN institutions i ON i.id = a.institution_id WHERE TRIM(LOWER(i.name)) = TRIM(LOWER(?)) ORDER BY a.sort_order, a.id LIMIT 1");
                 $defaultAccount = Account::defaultId();
 
                 while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
                     if (count($data) < 5) {
                         continue;
                     }
-                    $date = trim($data[0] ?? '');
-                    $type = trim($data[1] ?? '');
-                    $amount = round((float)($data[2] ?? 0), 2);
-                    $categoryName = trim($data[3] ?? '');
-                    $description = trim($data[4] ?? '');
-                    $accountName = trim($data[5] ?? '');
+                    $date = $pick($data, $idx, 'date', 0);
+                    $type = $pick($data, $idx, 'type', 1);
+                    $amount = round((float) $pick($data, $idx, 'amount', 2), 2);
+                    $categoryName = $pick($data, $idx, 'category', 3);
+                    $description = $pick($data, $idx, 'description', 4);
+                    $sectionName = $pick($data, $idx, 'section', 6);
+                    $institutionName = $pick($data, $idx, 'institution', 5);
+                    if ($sectionName === '' && !isset($idx['section'])) {
+                        // Older exports used a single "Account" column.
+                        $sectionName = $pick($data, $idx, 'account', 5);
+                    }
 
                     if ($date === '' || $amount <= 0 || !in_array($type, ['income', 'expense'], true)) {
                         continue;
                     }
 
                     $accId = $defaultAccount;
-                    if ($accountName !== '') {
-                        $stmtAcc->execute([$accountName]);
-                        $found = $stmtAcc->fetchColumn();
+                    if ($sectionName !== '') {
+                        $found = false;
+                        if ($institutionName !== '') {
+                            $stmtAccSection->execute([$institutionName, $sectionName]);
+                            $found = $stmtAccSection->fetchColumn();
+                        }
+                        if (!$found) {
+                            $stmtAcc->execute([$sectionName]);
+                            $found = $stmtAcc->fetchColumn();
+                        }
+                        if ($found) {
+                            $accId = (int) $found;
+                        }
+                    } elseif ($institutionName !== '') {
+                        $stmtInst->execute([$institutionName]);
+                        $found = $stmtInst->fetchColumn();
                         if ($found) {
                             $accId = (int) $found;
                         }
@@ -274,9 +320,109 @@ if ($route === 'settings/import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if ($route === 'accounts/activate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
-    Account::setActive((int) ($_POST['account_id'] ?? 0));
-    $back = $_POST['return'] ?? '/dashboard';
-    header('Location: ' . (str_starts_with($back, '/') ? $back : '/dashboard'));
+    $institutionId = (int) ($_POST['institution_id'] ?? 0);
+    $accountId = (int) ($_POST['account_id'] ?? 0);
+
+    if ($institutionId > 0) {
+        Institution::activate($institutionId);
+    } elseif ($accountId > 0) {
+        Account::setActive($accountId);
+    }
+
+    $return = (string) ($_POST['return'] ?? '');
+    $target = ($return !== '' && str_starts_with($return, '/')) ? $return : '/dashboard';
+    header('Location: ' . $target);
+    exit;
+}
+
+if ($route === 'institutions/create-from-template' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $key = (string) ($_POST['template_key'] ?? '');
+    $payload = json_decode((string) ($_POST['payload'] ?? '{}'), true);
+    if (!is_array($payload)) {
+        $payload = [];
+    }
+    $built = InstitutionTemplate::apply($key, $payload);
+    if ($built === null) {
+        header('Location: /accounts?msg=name_required');
+        exit;
+    }
+
+    $db = Database::getConnection();
+    $db->beginTransaction();
+    try {
+        $institutionId = Institution::create($built['institution']);
+        $firstSectionId = null;
+        foreach ($built['sections'] as $section) {
+            $section['institution_id'] = $institutionId;
+            $sectionId = Account::create($section);
+            if ($firstSectionId === null) {
+                $firstSectionId = $sectionId;
+            }
+        }
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        error_log('Institution template create failed: ' . $e->getMessage());
+        header('Location: /accounts?msg=create_failed');
+        exit;
+    }
+
+    if ($firstSectionId !== null) {
+        Account::setActive($firstSectionId);
+    }
+    AppLog::info('institution_created', [
+        'id' => $institutionId,
+        'template' => $key,
+        'sections' => count($built['sections']),
+    ]);
+    header('Location: /accounts?msg=created');
+    exit;
+}
+
+if ($route === 'institutions/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $id = (int) ($_POST['id'] ?? 0);
+    try {
+        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null);
+    } catch (InvalidArgumentException $e) {
+        header('Location: /accounts?msg=icon_upload_invalid');
+        exit;
+    }
+    $data = [
+        'name' => trim($_POST['name'] ?? ''),
+        'color_hex' => $_POST['color_hex'] ?? '#4f6ef7',
+        'icon_data' => $iconUpload['data'] ?? null,
+        'icon_mime' => $iconUpload['mime'] ?? 'image/png',
+        'clear_icon' => isset($_POST['clear_icon']) ? 1 : 0,
+        'archived' => isset($_POST['archived']) ? 1 : 0,
+        'sort_order' => (int) ($_POST['sort_order'] ?? 0),
+    ];
+    if ($data['name'] === '') {
+        header('Location: /accounts?msg=name_required');
+        exit;
+    }
+    if ($id > 0) {
+        Institution::update($id, $data);
+        AppLog::info('institution_updated', ['id' => $id, 'name' => $data['name']]);
+        header('Location: /accounts?msg=updated');
+    } else {
+        $newId = Institution::create($data);
+        AppLog::info('institution_created', ['id' => $newId, 'name' => $data['name']]);
+        header('Location: /accounts?msg=created');
+    }
+    exit;
+}
+
+if ($route === 'institutions/delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    Auth::requireLogin();
+    $id = (int) ($_POST['id'] ?? 0);
+    if ($id > 0 && !Institution::hasTransactions($id)) {
+        Institution::delete($id);
+        header('Location: /accounts?msg=deleted');
+    } else {
+        header('Location: /accounts?msg=blocked');
+    }
     exit;
 }
 
@@ -289,10 +435,13 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /accounts?msg=icon_upload_invalid');
         exit;
     }
+
     $kind = in_array($_POST['kind'] ?? '', ['savings', 'credit', 'paylater'], true) ? $_POST['kind'] : 'savings';
     $data = [
+        'institution_id' => (int) ($_POST['institution_id'] ?? 0) ?: null,
         'name'           => trim($_POST['name'] ?? ''),
         'kind'           => $kind,
+        'paylater_role'  => in_array($_POST['paylater_role'] ?? '', ['bnpl', 'financing', 'both'], true) ? $_POST['paylater_role'] : null,
         'color_hex'      => $_POST['color_hex'] ?? '#4f6ef7',
         'icon_data'      => $iconUpload['data'] ?? null,
         'icon_mime'      => $iconUpload['mime'] ?? 'image/png',
@@ -324,7 +473,7 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /accounts?msg=updated');
     } else {
         $newId = Account::create($data);
-        if ($newId > 0 && Account::activeId() === null) {
+        if ($newId > 0) {
             Account::setActive($newId);
         }
         AppLog::info('account_created', ['id' => $newId, 'name' => $data['name'], 'kind' => $kind]);

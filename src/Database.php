@@ -115,10 +115,22 @@ final class Database
                 ip TEXT NOT NULL,
                 attempted_at TEXT NOT NULL
             )",
-            "CREATE TABLE IF NOT EXISTS accounts (
+            "CREATE TABLE IF NOT EXISTS institutions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                color_hex TEXT NOT NULL DEFAULT '#4f6ef7',
+                icon_data TEXT,
+                icon_mime TEXT NOT NULL DEFAULT 'image/png',
+                archived INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                institution_id INTEGER REFERENCES institutions(id) ON DELETE SET NULL,
+                name TEXT NOT NULL,
                 kind TEXT NOT NULL CHECK(kind IN ('savings', 'credit', 'paylater')),
+                paylater_role TEXT,
                 color_hex TEXT NOT NULL DEFAULT '#4f6ef7',
                 bnpl_mode TEXT CHECK(bnpl_mode IN ('cycle', 'per_purchase')),
                 statement_day INTEGER,
@@ -228,6 +240,8 @@ final class Database
             "ALTER TABLE transactions ADD COLUMN commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL",
             "ALTER TABLE transactions ADD COLUMN commitment_period TEXT",
             "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE accounts ADD COLUMN institution_id INTEGER REFERENCES institutions(id) ON DELETE SET NULL",
+            "ALTER TABLE accounts ADD COLUMN paylater_role TEXT",
             "ALTER TABLE paylater_plans ADD COLUMN kind TEXT NOT NULL DEFAULT 'purchase'",
             "ALTER TABLE paylater_plans ADD COLUMN description TEXT",
         ];
@@ -282,6 +296,7 @@ final class Database
         // Indexes that depend on columns added above must run after the ALTERs.
         foreach ([
             "CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)",
+            "CREATE INDEX IF NOT EXISTS idx_accounts_institution ON accounts(institution_id)",
             "CREATE INDEX IF NOT EXISTS idx_commitments_account ON commitments(account_id)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_commitment ON transactions(commitment_id)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_commitment_period ON transactions(commitment_id, commitment_period) WHERE commitment_period IS NOT NULL",
@@ -318,6 +333,136 @@ final class Database
         }
 
         Maintenance::run();
+        self::backfillInstitutions($db);
+        self::backfillLegacyFinancing($db);
+        self::backfillPaylaterRoles($db);
+        try {
+            FinancingSplit::run($db);
+        } catch (Throwable $e) {
+            // Keep the app usable; the marker stays unset so it retries later.
+            error_log('Financing split failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Old snapshots predate paylater_plans.kind. Their financing plans were
+     * imported as 'purchase', which hid them from the financing page and made
+     * the account look like BNPL-only. Detect the legacy marketing names from
+     * the linked transaction and mark them as financing once.
+     */
+    private static function backfillLegacyFinancing(PDO $db): void
+    {
+        if (Settings::get('legacy_financing_backfill') !== null) {
+            return;
+        }
+
+        $plans = $db->query("SELECT id, description, purchase_txn_id FROM paylater_plans WHERE kind IS NULL OR kind = 'purchase'")
+            ->fetchAll(PDO::FETCH_ASSOC);
+        $txDescription = $db->prepare("SELECT description FROM transactions WHERE id = ?");
+        $feeDescription = $db->prepare("SELECT description FROM transactions WHERE plan_id = ? AND description LIKE '%(financing)' LIMIT 1");
+        $markFinancing = $db->prepare("UPDATE paylater_plans SET kind = 'financing' WHERE id = ?");
+
+        foreach ($plans as $plan) {
+            $texts = [(string) ($plan['description'] ?? '')];
+            if (!empty($plan['purchase_txn_id'])) {
+                $txDescription->execute([(int) $plan['purchase_txn_id']]);
+                $linked = $txDescription->fetchColumn();
+                if ($linked !== false) {
+                    $texts[] = (string) $linked;
+                }
+            }
+            $feeDescription->execute([(int) $plan['id']]);
+            $fee = $feeDescription->fetchColumn();
+            if ($fee !== false) {
+                $texts[] = (string) $fee;
+            }
+
+            foreach ($texts as $text) {
+                // Conservative: only recognised financing/loan product names,
+                // not arbitrary purchases that happen to mention a loan.
+                if (preg_match('/\b(financing(\s+loan)?|personal\s+financing|sloan|shopee\s+loan)\b/i', $text) === 1) {
+                    $markFinancing->execute([(int) $plan['id']]);
+                    break;
+                }
+            }
+        }
+
+        // Recompute roles for accounts that now have financing plans. Only
+        // null/bnpl roles are upgraded; explicit financing/both choices stay.
+        $accounts = $db->query("SELECT id, paylater_role FROM accounts WHERE kind = 'paylater'")
+            ->fetchAll(PDO::FETCH_ASSOC);
+        $countFinancing = $db->prepare("SELECT COUNT(*) FROM paylater_plans WHERE account_id = ? AND kind = 'financing'");
+        $countPurchase = $db->prepare("SELECT COUNT(*) FROM paylater_plans WHERE account_id = ? AND kind = 'purchase'");
+        $updateRole = $db->prepare("UPDATE accounts SET paylater_role = ? WHERE id = ?");
+
+        foreach ($accounts as $account) {
+            $countFinancing->execute([(int) $account['id']]);
+            $financing = (int) $countFinancing->fetchColumn();
+            if ($financing === 0) {
+                continue;
+            }
+            $countPurchase->execute([(int) $account['id']]);
+            $purchases = (int) $countPurchase->fetchColumn();
+            $role = $purchases > 0 ? 'both' : 'financing';
+            $current = (string) ($account['paylater_role'] ?? '');
+            if ($current !== 'both' && $current !== 'financing') {
+                $updateRole->execute([$role, (int) $account['id']]);
+            }
+        }
+
+        Settings::set('legacy_financing_backfill', date('Y-m-d H:i:s'));
+    }
+
+    /**
+     * Existing paylater accounts keep the combined BNPL + financing view only
+     * when they actually have financing plans; everything else defaults to BNPL.
+     */
+    private static function backfillPaylaterRoles(PDO $db): void
+    {
+        $rows = $db->query("SELECT id FROM accounts WHERE kind = 'paylater' AND (paylater_role IS NULL OR paylater_role = '')")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        if ($rows === []) {
+            return;
+        }
+        $hasFinancing = $db->prepare("SELECT 1 FROM paylater_plans WHERE account_id = ? AND kind = 'financing' LIMIT 1");
+        $update = $db->prepare("UPDATE accounts SET paylater_role = ? WHERE id = ?");
+        foreach ($rows as $id) {
+            $hasFinancing->execute([(int) $id]);
+            $role = $hasFinancing->fetchColumn() ? 'both' : 'bnpl';
+            $update->execute([$role, (int) $id]);
+        }
+    }
+
+    /**
+     * Ensure every account (section) belongs to an institution. Runs on every
+     * schema init but only writes when an orphan exists, so it also repairs
+     * accounts created by older code after the first migration.
+     */
+    private static function backfillInstitutions(PDO $db): void
+    {
+        $orphans = $db->query("SELECT * FROM accounts WHERE institution_id IS NULL ORDER BY sort_order, id")
+            ->fetchAll(PDO::FETCH_ASSOC);
+        if ($orphans === []) {
+            return;
+        }
+
+        $insert = $db->prepare("
+            INSERT INTO institutions (name, color_hex, icon_data, icon_mime, archived, sort_order, created_at)
+            VALUES (?, ?, ?, ?, 0, ?, ?)
+        ");
+        $link = $db->prepare("UPDATE accounts SET institution_id = ? WHERE id = ?");
+
+        foreach ($orphans as $account) {
+            $insert->execute([
+                (string) $account['name'],
+                (string) ($account['color_hex'] ?? '#4f6ef7'),
+                $account['icon_data'] ?? null,
+                (string) ($account['icon_mime'] ?? 'image/png'),
+                (int) ($account['sort_order'] ?? 0),
+                (string) ($account['created_at'] ?? date('Y-m-d H:i:s')),
+            ]);
+            $link->execute([(int) $db->lastInsertId(), (int) $account['id']]);
+        }
     }
 
     /** Best-effort date-linked history for bill payments recorded by older versions. */

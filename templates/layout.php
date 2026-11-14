@@ -1,11 +1,16 @@
 <?php
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Account.php';
+require_once __DIR__ . '/../src/Institution.php';
 Auth::requireLogin();
 
 $currentRoute = $route ?? 'dashboard';
 
-$accounts = Account::all();
+$institutions = Institution::all();
+$activeInstitution = Institution::active();
+$activeInstitutionId = $activeInstitution ? (int) $activeInstitution['id'] : 0;
+$sections = $activeInstitution ? Institution::sections($activeInstitutionId) : [];
+$liabilitySections = $activeInstitution ? Institution::liabilitySections($activeInstitutionId) : [];
 $activeAccount = Account::active();
 $activeId = $activeAccount ? (int) $activeAccount['id'] : 0;
 $netWorth = Account::netWorth();
@@ -13,12 +18,16 @@ $netWorth = Account::netWorth();
 $accountNav = [
     'dashboard'    => ['label' => 'Dashboard',    'icon' => 'home'],
     'transactions' => ['label' => 'Transactions', 'icon' => 'document'],
-    'bills'        => ['label' => 'Bills & BNPL', 'icon' => 'bill'],
-    'recurring'    => ['label' => 'Recurring',    'icon' => 'calendar'],
 ];
-// Personal Financing is only offered for cycle paylater accounts (TikTok).
-if ($activeAccount && ($activeAccount['kind'] ?? '') === 'paylater' && ($activeAccount['bnpl_mode'] ?? '') === 'cycle') {
-    $accountNav['financing'] = ['label' => 'Personal Financing', 'icon' => 'wallet'];
+if ($liabilitySections !== []) {
+    $accountNav['bills'] = ['label' => 'Bills', 'icon' => 'bill'];
+}
+$accountNav['recurring'] = ['label' => 'Recurring', 'icon' => 'calendar'];
+$canFinance = $activeAccount !== null
+    && ($activeAccount['kind'] ?? '') === 'paylater'
+    && in_array($activeAccount['paylater_role'] ?? 'bnpl', ['financing', 'both'], true);
+if ($canFinance) {
+    $accountNav['financing'] = ['label' => 'Financing', 'icon' => 'wallet'];
 }
 $globalNav = [
     'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
@@ -79,20 +88,40 @@ function navIcon(string $icon): string
                 <p class="text-[11px] font-medium" style="color:var(--text-muted);">Net Worth</p>
                 <p class="text-lg font-bold" style="color:var(--text);">RM <?= number_format($netWorth, 2) ?></p>
             </div>
-            <?php if (!empty($accounts)): ?>
+            <?php if (!empty($institutions)): ?>
             <form method="POST" action="/accounts/activate">
                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
-                <input type="hidden" name="return" value="<?= htmlspecialchars((string) $returnPath, ENT_QUOTES, 'UTF-8') ?>">
                 <label class="mb-1 block text-[11px] font-medium" style="color:var(--text-muted);">Account</label>
-                <select name="account_id" onchange="this.form.submit()"
+                <select name="institution_id" onchange="this.form.submit()"
                     class="w-full rounded-lg border px-3 py-2 text-sm font-semibold"
                     style="background:var(--bg-alt);border-color:var(--border);color:var(--text);">
-                    <?php foreach ($accounts as $a): ?>
-                        <option value="<?= (int) $a['id'] ?>" <?= (int) $a['id'] === $activeId ? 'selected' : '' ?>>
-                            <?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?>
+                    <?php foreach ($institutions as $inst): ?>
+                        <option value="<?= (int) $inst['id'] ?>" <?= (int) $inst['id'] === $activeInstitutionId ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $inst['name'], ENT_QUOTES, 'UTF-8') ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
+            </form>
+            <?php endif; ?>
+            <?php if ($sections !== []): ?>
+            <div>
+                <p class="mb-1 block text-[11px] font-medium" style="color:var(--text-muted);">Sections</p>
+                <div class="space-y-1">
+                    <?php foreach ($sections as $section): $sectionActive = (int) $section['id'] === $activeId; $sectionTarget = ($section['kind'] === 'paylater' && ($section['paylater_role'] ?? '') === 'financing') ? '/financing' : '/dashboard'; ?>
+                    <button type="button" data-section-nav="<?= (int) $section['id'] ?>" onclick="activateSection(<?= (int) $section['id'] ?>, '<?= $sectionTarget ?>')" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors" style="<?= $sectionActive ? 'background:var(--accent-soft);color:var(--accent);' : 'color:var(--text-secondary);' ?>">
+                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold" style="background:var(--bg-hover);color:var(--text-secondary);"><?= htmlspecialchars(mb_substr((string) $section['name'], 0, 1), ENT_QUOTES, 'UTF-8') ?></span>
+                        <span class="min-w-0">
+                            <span class="block truncate text-sm font-medium"><?= htmlspecialchars((string) $section['name'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <span class="block truncate text-[10px]" style="color:var(--text-muted);"><?= htmlspecialchars(Institution::sectionRoleLabel($section), ENT_QUOTES, 'UTF-8') ?></span>
+                        </span>
+                    </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <form id="sectionActivateForm" method="POST" action="/accounts/activate" class="hidden">
+                <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+                <input type="hidden" name="account_id" id="sectionActivateId" value="">
+                <input type="hidden" name="return" id="sectionActivateReturn" value="/dashboard">
             </form>
             <?php endif; ?>
         </div>
@@ -247,12 +276,22 @@ function navIcon(string $icon): string
             window.setTimeout(() => { delete form.dataset.confirmed; }, 1000);
         });
 
+        function activateSection(id, target) {
+            const input = document.getElementById('sectionActivateId');
+            const returnInput = document.getElementById('sectionActivateReturn');
+            const form = document.getElementById('sectionActivateForm');
+            if (!input || !form) return;
+            input.value = id;
+            if (returnInput) returnInput.value = target || '/dashboard';
+            form.submit();
+        }
+
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('-translate-x-full');
             document.getElementById('sidebar-backdrop').classList.toggle('hidden');
         }
 
-        const appModals = ['editModal', 'accountModal', 'payModal', 'refundModal']
+        const appModals = ['editModal', 'accountModal', 'institutionModal', 'templateModal', 'wizardModal', 'payModal', 'refundModal']
             .map((id) => document.getElementById(id)).filter(Boolean);
         appModals.forEach((modal) => {
             modal.setAttribute('role', 'dialog');
@@ -284,7 +323,15 @@ function navIcon(string $icon): string
             if (!modal) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
-                const close = { editModal: 'closeEdit', accountModal: 'closeAccountForm', payModal: 'closePay', refundModal: 'closeRefund' }[modal.id];
+                const close = {
+                    editModal: 'closeEdit',
+                    accountModal: 'closeAccountForm',
+                    institutionModal: 'closeInstitutionForm',
+                    templateModal: 'closeTemplateChooser',
+                    wizardModal: 'closeWizard',
+                    payModal: 'closePay',
+                    refundModal: 'closeRefund',
+                }[modal.id];
                 if (close && typeof window[close] === 'function') window[close]();
                 return;
             }

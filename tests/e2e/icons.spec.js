@@ -62,22 +62,37 @@ test.describe('Category and account icons', () => {
     await expect(page.locator('#category_icon_preview')).toBeHidden();
   });
 
+  test('categories can use a bundled image icon', async ({ page }) => {
+    await page.goto('/categories');
+    await page.fill('#category_name', 'E2E Laundry Category');
+    await page.click('[data-bundled-icon="laundry"]');
+    await expect(page.locator('#category_bundled_icon')).toHaveValue('laundry');
+    await page.click('#categoryForm button[type="submit"]');
+
+    const row = page.locator('.group', { hasText: 'E2E Laundry Category' });
+    await expect(row.locator('img')).toBeVisible();
+    await row.getByRole('button', { name: 'Edit E2E Laundry Category' }).click();
+    await expect(page.locator('#category_icon_preview')).toBeVisible();
+  });
+
   test('accounts can upload a square PNG and keep it when edited', async ({ page }) => {
     await page.goto('/accounts');
     await page.click('text=+ Add Account');
+    await page.click('#templateModal >> text=Custom account');
+    await expect(page.locator('#accountModal')).toBeVisible();
     await page.fill('#acc_name', 'E2E Icon Account');
     await page.setInputFiles('#acc_icon_file', { name: 'account.png', mimeType: 'image/png', buffer: makePng() });
     await expect(page.locator('#acc_icon_preview')).toBeVisible();
     await page.click('#accountModal button[type="submit"]');
 
-    const row = page.locator('.rounded-xl.border', { hasText: 'E2E Icon Account' }).first();
+    const row = page.locator('[data-section-row]', { hasText: 'E2E Icon Account' }).first();
     await expect(row.locator('img')).toBeVisible();
     await row.getByTitle('Edit').click();
     await expect(page.locator('#acc_icon_preview')).toBeVisible();
     await expect(page.locator('#acc_clear_icon_wrap')).toBeVisible();
     await page.check('#acc_clear_icon');
     await page.click('#accountModal button[type="submit"]');
-    await expect(page.locator('.rounded-xl.border', { hasText: 'E2E Icon Account' }).first().locator('img')).toHaveCount(0);
+    await expect(page.locator('[data-section-row]', { hasText: 'E2E Icon Account' }).first().locator('img')).toHaveCount(0);
   });
 
   test('wrong icon dimensions are rejected in the picker', async ({ page }) => {

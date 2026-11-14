@@ -6,9 +6,19 @@ test.describe('Personal Financing', () => {
     await login(page);
   });
 
+  test('financing page works for a per-purchase financing section', async ({ page }) => {
+    await createAccount(page, { name: 'FIN_PP', kind: 'paylater', bnpl: 'per_purchase', role: 'financing' });
+    await switchAccount(page, 'FIN_PP');
+
+    await page.goto('/financing');
+    await expect(page).toHaveURL(/\/financing/);
+    await expect(page.locator('body')).toContainText('FIN_PP');
+    await expect(page.locator('#sidebar a[href="/financing"]')).toBeVisible();
+  });
+
   test('financing cashes in and produces a separate bill on the borrow day', async ({ page }) => {
     await createAccount(page, { name: 'FIN_CASH', kind: 'savings', opening: '0', start: '2026-09' });
-    await createAccount(page, { name: 'FIN_TIKTOK', kind: 'paylater', dueDay: '10', bnpl: 'cycle', offset: '1' });
+    await createAccount(page, { name: 'FIN_TIKTOK', kind: 'paylater', dueDay: '10', bnpl: 'cycle', offset: '1', role: 'financing' });
     await switchAccount(page, 'FIN_TIKTOK');
 
     // The sidebar exposes Personal Financing for cycle paylater accounts.
@@ -28,7 +38,7 @@ test.describe('Personal Financing', () => {
     await expect(page.locator('body')).toContainText('Test Financing');
 
     await page.goto('/bills');
-    await expect(page.locator('body')).toContainText('Personal Financing');
+    await expect(page.locator('body')).toContainText('Financing bills');
     await expect(page.locator('body')).toContainText('Due 05 Nov 2026');
     await page.locator('summary', { hasText: 'View details' }).first().click();
     await expect(page.locator('body')).toContainText('Personal Financing · 1/3');

@@ -2,10 +2,46 @@
 require_once __DIR__ . '/../src/Account.php';
 require_once __DIR__ . '/../src/Bill.php';
 require_once __DIR__ . '/../src/PaylaterPlan.php';
+require_once __DIR__ . '/../src/Institution.php';
 
-$account = Account::active();
 $msg = $_GET['msg'] ?? '';
 $accounts = Account::all();
+$accountGroups = Institution::groupAccounts($accounts);
+
+$institution = Institution::active();
+$institutionId = $institution ? (int) $institution['id'] : 0;
+$liabilitySections = $institution ? Institution::liabilitySections($institutionId) : [];
+$liabilityIds = array_map(static fn (array $section): int => (int) $section['id'], $liabilitySections);
+
+$selectedId = (int) ($_GET['section'] ?? 0);
+$sessionAccount = Account::active();
+$sessionId = $sessionAccount ? (int) $sessionAccount['id'] : 0;
+if ($selectedId <= 0 || !in_array($selectedId, $liabilityIds, true)) {
+    if (in_array($sessionId, $liabilityIds, true)) {
+        $selectedId = $sessionId;
+    } elseif ($liabilitySections !== []) {
+        $selectedId = (int) $liabilitySections[0]['id'];
+    } else {
+        $selectedId = 0;
+    }
+}
+$account = $selectedId > 0 ? Account::find($selectedId) : null;
+
+$isLiability = $account ? Account::isLiability($account) : false;
+$isPaylater = $account && $account['kind'] === 'paylater';
+$role = $isPaylater ? ($account['paylater_role'] ?? 'bnpl') : null;
+$showPaylaterBills = !$isPaylater || $role !== 'financing';
+$showFinancingBills = $isPaylater && in_array($role, ['financing', 'both'], true);
+
+if ($isLiability) {
+    Bill::sync((int) $account['id']);
+}
+$bills = $isLiability ? Bill::forAccount((int) $account['id']) : [];
+$limitAmount = ($account['credit_limit'] ?? null) !== null ? (float) $account['credit_limit'] : 0.0;
+$hasLimit = $isLiability && $limitAmount > 0;
+$outstandingNow = $hasLimit ? max(0.0, Account::balance((int) $account['id'])) : 0.0;
+$availableNow = $hasLimit ? max(0.0, $limitAmount - $outstandingNow) : 0.0;
+$plans = ($isPaylater && $showPaylaterBills) ? PaylaterPlan::forAccountByKind((int) $account['id'], 'purchase') : [];
 
 $toasts = [
     'paid'     => ['Payment recorded.', 'success'],
@@ -13,22 +49,26 @@ $toasts = [
     'refunded' => ['Refund recorded.', 'success'],
 ];
 
-$isLiability = $account ? Account::isLiability($account) : false;
-$isPaylater = $account && $account['kind'] === 'paylater';
-if ($isLiability) {
-    Bill::sync((int) $account['id']);
-}
-$bills = $isLiability ? Bill::forAccount((int) $account['id']) : [];
-$plans = $isPaylater ? PaylaterPlan::forAccountByKind((int) $account['id'], 'purchase') : [];
-
 ob_start();
 ?>
 
 <div class="mb-6">
     <h2 class="text-2xl font-bold" style="color:var(--text);">Bills</h2>
     <p class="mt-0.5 text-sm" style="color:var(--text-secondary);">
-        <?= $account ? htmlspecialchars((string) $account['name'], ENT_QUOTES, 'UTF-8') : 'No account' ?> · statements and repayments
+        <?= $institution ? htmlspecialchars((string) $institution['name'], ENT_QUOTES, 'UTF-8') : '' ?>
+        <?php if ($account): ?> · <?= htmlspecialchars((string) $account['name'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?>
+        <?php if ($hasLimit): ?> · Limit RM <?= number_format($limitAmount, 2) ?> · RM <?= number_format($availableNow, 2) ?> available<?php endif; ?>
     </p>
+    <?php if ($liabilitySections !== []): ?>
+    <div class="mt-3 flex flex-wrap gap-2">
+        <?php foreach ($liabilitySections as $section): $tabActive = (int) $section['id'] === $selectedId; ?>
+            <a href="/bills?section=<?= (int) $section['id'] ?>" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="<?= $tabActive ? 'background:var(--accent-soft);color:var(--accent);border-color:var(--accent);' : 'border-color:var(--border);color:var(--text-secondary);' ?>">
+                <?= htmlspecialchars((string) $section['name'], ENT_QUOTES, 'UTF-8') ?>
+                <span class="ml-1 font-normal opacity-70"><?= htmlspecialchars(Institution::sectionRoleLabel($section), ENT_QUOTES, 'UTF-8') ?></span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php if (isset($toasts[$msg])): $t = $toasts[$msg]; ?>
@@ -37,15 +77,10 @@ ob_start();
 
 <?php if (!$account || !$isLiability): ?>
     <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
-        <p class="text-sm" style="color:var(--text-muted);">Bills apply to credit and paylater accounts. Switch to one from the sidebar.</p>
+        <p class="text-sm" style="color:var(--text-muted);">This account has no billing sections yet. Add a PayLater, card, or financing section.</p>
     </div>
 <?php else: ?>
 
-<?php if (empty($bills)): ?>
-    <div class="rounded-xl border py-16 text-center" style="background:var(--bg-alt);border-color:var(--border);">
-        <p class="text-sm" style="color:var(--text-muted);">No bills yet. Add a purchase on this account from Transactions.</p>
-    </div>
-<?php else: ?>
     <?php
     $bnplBills = [];
     $financingBills = [];
@@ -134,24 +169,25 @@ ob_start();
         echo '</div>';
     };
     ?>
+    <?php if ($showPaylaterBills): ?>
     <section class="mb-8">
-        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">BNPL</h3>
-        <?php $renderBills($bnplBills, 'No BNPL bills.', 'bnpl'); ?>
-    </section>
-    <?php if ($isPaylater): ?>
-    <section>
-        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">Personal Financing</h3>
-        <?php $renderBills($financingBills, 'No personal financing bills.', 'financing'); ?>
+        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);"><?= $isPaylater ? 'PayLater bills' : 'Card bills' ?></h3>
+        <?php $renderBills($bnplBills, $isPaylater ? 'No PayLater bills.' : 'No card bills.', 'bnpl'); ?>
     </section>
     <?php endif; ?>
-<?php endif; ?>
+    <?php if ($showFinancingBills): ?>
+    <section>
+        <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">Financing bills</h3>
+        <?php $renderBills($financingBills, 'No financing bills.', 'financing'); ?>
+    </section>
+    <?php endif; ?>
 
 <!-- Plans -->
-<?php if ($isPaylater): ?>
+<?php if ($isPaylater && $showPaylaterBills): ?>
 <div class="mt-8">
-    <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">BNPL purchases</h3>
+    <h3 class="mb-3 text-base font-semibold" style="color:var(--text);">Instalment plans</h3>
     <?php if (empty($plans)): ?>
-        <p class="text-sm" style="color:var(--text-muted);">No BNPL purchases.</p>
+        <p class="text-sm" style="color:var(--text-muted);">No instalment plans.</p>
     <?php else: ?>
         <div class="space-y-3">
             <?php foreach ($plans as $p): ?>
@@ -180,6 +216,7 @@ ob_start();
                             </form>
                             <?php endif; ?>
                             <button type="button" onclick="openRefund(<?= (int)$p['id'] ?>, <?= $remaining ?>)" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="border-color:var(--border);color:var(--text-secondary);">Refund</button>
+                            <?php if (($account['paylater_role'] ?? 'bnpl') === 'both'): ?>
                             <form method="POST" action="/plans/set-kind" class="inline" data-confirm="Move this plan to Personal Financing?" data-confirm-label="Move">
                                 <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
                                 <input type="hidden" name="plan_id" value="<?= (int)$p['id'] ?>">
@@ -187,6 +224,7 @@ ob_start();
                                 <input type="hidden" name="return" value="/bills">
                                 <button type="submit" class="rounded-lg border px-3 py-1.5 text-xs font-semibold" style="border-color:var(--border);color:var(--accent);">Move to Financing</button>
                             </form>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -209,7 +247,7 @@ ob_start();
             <div>
                 <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">From account</label>
                 <select name="from_account_id" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
-                    <?php foreach ($accounts as $a): if ($a['id'] === ($account['id'] ?? 0)) continue; ?><option value="<?= (int)$a['id'] ?>"><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?>
+                    <?php foreach ($accountGroups as $groupLabel => $groupAccounts): ?><optgroup label="<?= htmlspecialchars($groupLabel, ENT_QUOTES, 'UTF-8') ?>"><?php foreach ($groupAccounts as $a): if ($a['id'] === ($account['id'] ?? 0)) continue; ?><option value="<?= (int)$a['id'] ?>"><?= htmlspecialchars((string)$a['name'], ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?>
                 </select>
             </div>
             <div>

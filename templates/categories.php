@@ -17,12 +17,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             $id = (int)($_POST['id'] ?? 0);
+            $iconData = $iconUpload['data'] ?? null;
+            $iconMime = $iconUpload['mime'] ?? 'image/png';
+            $bundledKey = (string) ($_POST['bundled_icon'] ?? '');
+            if ($iconData === null && IconCatalog::hasBundled($bundledKey)) {
+                $bundled = IconCatalog::bundledData($bundledKey);
+                if ($bundled !== null) {
+                    $iconData = $bundled['data'];
+                    $iconMime = $bundled['mime'];
+                    $iconKey = 'other';
+                }
+            }
+            $clearIcon = ($_POST['clear_icon'] ?? '0') === '1';
+            if ($iconData !== null) {
+                $clearIcon = false;
+            }
             if ($name && in_array($type, ['income', 'expense'], true)) {
                 if ($id > 0) {
-                    Category::update($id, $name, $type, $color, $iconKey, $iconUpload['data'] ?? null, ($_POST['clear_icon'] ?? '0') === '1', $iconUpload['mime'] ?? 'image/png');
+                    Category::update($id, $name, $type, $color, $iconKey, $iconData, $clearIcon, $iconMime);
                     header('Location: /categories?msg=updated');
                 } else {
-                    Category::create($name, $type, $color, $iconKey, $iconUpload['data'] ?? null, $iconUpload['mime'] ?? 'image/png');
+                    Category::create($name, $type, $color, $iconKey, $iconData, $iconMime);
                     header('Location: /categories?msg=created');
                 }
                 exit;
@@ -149,6 +164,7 @@ ob_start();
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="id" id="category_id" value="">
                 <input type="hidden" name="icon_key" id="category_icon_key" value="other">
+                <input type="hidden" name="bundled_icon" id="category_bundled_icon" value="">
                 <input type="hidden" name="clear_icon" id="category_clear_icon" value="0">
 
                 <div>
@@ -163,6 +179,12 @@ ob_start();
                         <?php foreach (IconCatalog::keys() as $iconKey): $iconLabel = ucfirst(str_replace('_', ' ', $iconKey)); ?>
                         <button type="button" data-icon-key="<?= htmlspecialchars($iconKey, ENT_QUOTES, 'UTF-8') ?>" onclick="selectCategoryIcon('<?= htmlspecialchars($iconKey, ENT_QUOTES, 'UTF-8') ?>')" class="category-icon-option flex flex-col items-center gap-1 rounded-md p-1.5" title="<?= htmlspecialchars($iconLabel, ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($iconLabel, ENT_QUOTES, 'UTF-8') ?> icon">
                             <?= IconCatalog::svg($iconKey, 'h-5 w-5') ?><span class="text-[9px] leading-none"><?= htmlspecialchars($iconLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                        </button>
+                        <?php endforeach; ?>
+                        <?php foreach (IconCatalog::bundled() as $bundledKey => $bundledFile): $bundledLabel = ucwords(str_replace('-', ' ', $bundledKey)); ?>
+                        <button type="button" data-bundled-icon="<?= htmlspecialchars($bundledKey, ENT_QUOTES, 'UTF-8') ?>" onclick="selectBundledCategoryIcon('<?= htmlspecialchars($bundledKey, ENT_QUOTES, 'UTF-8') ?>')" class="category-icon-option flex flex-col items-center gap-1 rounded-md p-1.5" title="<?= htmlspecialchars($bundledLabel, ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($bundledLabel, ENT_QUOTES, 'UTF-8') ?> icon" aria-pressed="false">
+                            <img src="/assets/icons/<?= htmlspecialchars($bundledFile, ENT_QUOTES, 'UTF-8') ?>" class="h-5 w-5 object-contain" alt="">
+                            <span class="text-[9px] leading-none"><?= htmlspecialchars($bundledLabel, ENT_QUOTES, 'UTF-8') ?></span>
                         </button>
                         <?php endforeach; ?>
                     </div>
@@ -212,6 +234,7 @@ ob_start();
 var categoryIconManuallySelected = false;
 function selectCategoryIcon(key, manual = true) {
     if (manual) categoryIconManuallySelected = true;
+    document.getElementById('category_bundled_icon').value = '';
     document.getElementById('category_icon_key').value = key;
     document.getElementById('category_clear_icon').value = document.getElementById('category_id').value ? '1' : '0';
     document.getElementById('category_icon_preview').classList.add('hidden');
@@ -221,6 +244,24 @@ function selectCategoryIcon(key, manual = true) {
     document.getElementById('category_icon_error').classList.add('hidden');
     document.querySelectorAll('.category-icon-option').forEach(function(button) {
         var selected = button.dataset.iconKey === key;
+        button.style.background = selected ? 'var(--accent-soft)' : 'transparent';
+        button.style.color = selected ? 'var(--accent)' : 'var(--text-secondary)';
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+}
+function selectBundledCategoryIcon(key) {
+    categoryIconManuallySelected = true;
+    document.getElementById('category_bundled_icon').value = key;
+    document.getElementById('category_icon_key').value = 'other';
+    document.getElementById('category_clear_icon').value = '0';
+    var preview = document.getElementById('category_icon_preview');
+    preview.classList.add('hidden');
+    preview.removeAttribute('src');
+    document.getElementById('category_icon_file').value = '';
+    document.getElementById('category_icon_filename').textContent = 'No file selected';
+    document.getElementById('category_icon_error').classList.add('hidden');
+    document.querySelectorAll('.category-icon-option').forEach(function (button) {
+        var selected = button.dataset.bundledIcon === key;
         button.style.background = selected ? 'var(--accent-soft)' : 'transparent';
         button.style.color = selected ? 'var(--accent)' : 'var(--text-secondary)';
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
@@ -282,6 +323,7 @@ document.getElementById('category_icon_file').addEventListener('change', functio
     error.textContent = '';
     if (!file) { filename.textContent = 'No file selected'; return; }
     filename.textContent = file.name;
+    document.getElementById('category_bundled_icon').value = '';
     var input = this;
     function reject(message) {
         error.textContent = message;
