@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { login } = require('./helpers');
+const { login, createAccount } = require('./helpers');
 
 test.describe('Institution templates', () => {
   test.beforeEach(async ({ page }) => {
@@ -237,6 +237,57 @@ test.describe('Institution templates', () => {
     await expect(card).toContainText('RM 1,000.00');
     await expect(card).toContainText('RM 500.00 outstanding');
     await expect(card).toContainText('33% used');
+  });
+
+  test('adds a provider section through the section wizard', async ({ page }) => {
+    // Create a fresh TikTok via the institution wizard (Wallet + PayLater).
+    await openChooser(page);
+    await page.click('[data-template-key="tiktok"]');
+    await chooseProducts(page, ['TikTok Wallet', 'TikTok PayLater']);
+    await next(page); // wallet name
+    await fillMoney(page, '10');
+    await next(page); // main
+    await next(page); // paylater name
+    await fillMoney(page, '500');
+    await page.locator('#wiz_body input[name="wiz_choice"][value="1"]').check();
+    await next(page);
+    await Promise.all([page.waitForLoadState('networkidle'), page.click('#wiz_create')]);
+
+    const tiktok = page.locator('[data-institution-card]', { hasText: 'TikTok' }).last();
+    await tiktok.locator('button', { hasText: '+ Section' }).click();
+    await expect(page.locator('#sectionChooserModal')).toBeVisible();
+    await page.locator('#sectionChooserModal [data-section-card]', { hasText: 'TikTok Personal Financing' }).click();
+
+    // Name (prefilled) -> limit -> info -> review.
+    await next(page);
+    await fillMoney(page, '500');
+    await next(page);
+    await Promise.all([page.waitForLoadState('networkidle'), page.click('#wiz_create')]);
+
+    const row = page.locator('[data-section-row]', { hasText: 'TikTok Personal Financing' }).first();
+    await expect(row).toContainText('Financing');
+  });
+
+  test('adds a generic credit card through the section wizard', async ({ page }) => {
+    await createAccount(page, { name: 'SEC_CUSTOM', kind: 'savings', opening: '0', start: '2026-01' });
+
+    const institution = page.locator('[data-institution-card]', { hasText: 'SEC_CUSTOM' }).last();
+    await institution.locator('button', { hasText: '+ Section' }).click();
+    await expect(page.locator('#sectionChooserModal')).toBeVisible();
+    await page.locator('#sectionChooserModal [data-section-card]', { hasText: 'Credit card' }).click();
+
+    await page.fill('#wiz_q_input', 'SEC_CC');
+    await next(page);
+    await fillMoney(page, '1000');
+    await page.fill('#wiz_q_input', '15');
+    await next(page);
+    await page.fill('#wiz_q_input', '26');
+    await next(page);
+    await Promise.all([page.waitForLoadState('networkidle'), page.click('#wiz_create')]);
+
+    const row = page.locator('[data-section-row]', { hasText: 'SEC_CC' }).first();
+    await expect(row).toContainText('Credit card');
+    await expect(row).toContainText('due 26');
   });
 
   test('product checkboxes start unchecked and the search filters providers', async ({ page }) => {

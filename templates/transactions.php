@@ -46,8 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $months = 1;
                     $offset = 1;
                 } else {
+                    // The amount is the full price/total; the tenure derives the
+                    // monthly instalment inside PaylaterPlan::createPurchase().
                     $months = max(1, min(60, $months));
-                    $total = round($amount * $months, 2);
+                    $total = $amount;
                     $offset = 0;
                 }
                 PaylaterPlan::createPurchase((int) $accId, $catId, $description, $date, $total, $months, $cash, $offset);
@@ -629,7 +631,7 @@ function toggleRepay() {
     var inst = m.value === 'installments';
     document.getElementById('monthsWrap').classList.toggle('hidden', !inst);
     var lbl = document.getElementById('amountLabel');
-    if (lbl) lbl.textContent = inst ? 'Monthly amount (RM)' : 'Amount / Price (RM)';
+    if (lbl) lbl.textContent = inst ? 'Full price (RM)' : 'Amount / Price (RM)';
     updateRepayHint();
 }
 function updateRepayHint() {
@@ -639,7 +641,8 @@ function updateRepayHint() {
     if (!m || m.value !== 'installments') { hint.textContent = 'Recorded as one purchase; a single bill is due next cycle.'; return; }
     var amt = parseFloat(document.getElementById('addRecordForm').querySelector('input[name="amount"]').value || '0');
     var months = parseInt(document.getElementById('months').value || '1', 10);
-    hint.textContent = 'Total repayable: RM ' + (amt * months).toFixed(2) + ' over ' + months + ' month(s).';
+    if (!(months > 0)) months = 1;
+    hint.textContent = 'Monthly: RM ' + (amt / months).toFixed(2) + ' × ' + months + ' month(s) · total RM ' + amt.toFixed(2) + '.';
 }
 var addForm = document.getElementById('addRecordForm');
 var addAmountInput = addForm ? addForm.querySelector('input[name="amount"]') : null;

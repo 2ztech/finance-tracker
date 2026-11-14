@@ -176,4 +176,33 @@ test.describe('Recurring items', () => {
     await page.locator('summary', { hasText: 'Archived' }).click();
     await expect(page.locator('body')).toContainText('EXP_E2E');
   });
+  test('a recurring transfer moves money automatically', async ({ page }) => {
+    await createAccount(page, { name: 'RT_FROM', kind: 'savings', opening: '100', start: currentMonth() });
+    await createAccount(page, { name: 'RT_TO', kind: 'savings', opening: '0', start: currentMonth() });
+    await switchAccount(page, 'RT_FROM');
+
+    await page.goto('/recurring');
+    await page.selectOption('#form_type', 'transfer');
+    await page.fill('#form_name', 'RT_AUTO');
+    await page.fill('#form_amount', '20');
+    await page.selectOption('#form_to_account_id', { label: 'RT_TO' });
+    await page.$eval('#due_date_slider', (el) => { el.value = '1'; el.dispatchEvent(new Event('input')); });
+    await page.fill('#form_start_date', `${currentMonth()}-01`);
+    await submitRecurring(page);
+
+    const row = page.locator('tr.recurring-row', { hasText: 'RT_AUTO' }).first();
+    await expect(row).toContainText('Transfer');
+
+    await page.goto('/transactions');
+    await expect(page.locator('body')).toContainText('[Auto] RT_AUTO');
+
+    await switchAccount(page, 'RT_FROM');
+    await page.goto('/dashboard');
+    await expect(page.locator('body')).toContainText('RM 80.00');
+
+    await switchAccount(page, 'RT_TO');
+    await page.goto('/dashboard');
+    await expect(page.locator('body')).toContainText('RM 20.00');
+  });
+
 });

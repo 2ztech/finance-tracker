@@ -19,7 +19,7 @@ test.describe('BNPL / bills', () => {
     await switchAccount(page, 'TEST_BNPL_E2E');
 
     await addTransaction(page, {
-      account: 'TEST_BNPL_E2E', type: 'expense', amount: '10',
+      account: 'TEST_BNPL_E2E', type: 'expense', amount: '9',
       category: 'Food & Dining', date: '2026-09-05', description: 'bnpl-inst-1',
       repayMode: 'installments', months: '3',
     });
@@ -27,32 +27,32 @@ test.describe('BNPL / bills', () => {
     await page.goto('/bills');
     await expect(page.locator('body')).toContainText('Due 10 Oct 2026');
 
-    // Partial RM4 of the RM10 bill.
+    // Full price RM9 over 3 months = RM3.00 per bill. Partial RM1.
     await billCard(page, 'Due 10 Oct 2026').locator('button:has-text("Pay")').click();
     await expect(page.locator('#payModal')).toBeVisible();
     await page.selectOption('#payModal select[name="from_account_id"]', { label: 'TEST_BNPL_FUND' });
-    await page.fill('#pay_amount', '4');
+    await page.fill('#pay_amount', '1');
     await Promise.all([
       page.waitForLoadState('networkidle'),
       page.click('#payModal button[type="submit"]'),
     ]);
     await expect(page.locator('body')).toContainText(/partial/i);
 
-    // Pay the remaining RM6.
+    // Pay the remaining RM2.
     await billCard(page, 'Due 10 Oct 2026').locator('button:has-text("Pay")').click();
     await expect(page.locator('#payModal')).toBeVisible();
-    await page.fill('#pay_amount', '6');
+    await page.fill('#pay_amount', '2');
     await Promise.all([
       page.waitForLoadState('networkidle'),
       page.click('#payModal button[type="submit"]'),
     ]);
     // Fully paid: the Pay button is gone and the paid total is shown.
-    await expect(page.locator('body')).toContainText('RM 10.00 paid of RM 10.00');
+    await expect(page.locator('body')).toContainText('RM 3.00 paid of RM 3.00');
 
     // Refund against a plan.
     await page.locator('button:has-text("Refund")').first().click();
     await expect(page.locator('#refundModal')).toBeVisible();
-    await page.fill('#refund_amount', '5');
+    await page.fill('#refund_amount', '1');
     await Promise.all([
       page.waitForLoadState('networkidle'),
       page.click('#refundModal button[type="submit"]'),

@@ -31,3 +31,20 @@ The savings balance includes transactions and transfers dated on or before the s
 Bill payment allocations are recorded with payment dates so payments after a viewed historical month do not make its bills appear paid prematurely. Existing bill-payment transfers with a due date in their standard description are backfilled on first database initialization. Older PayLater plan-settlement transfers did not retain an installment reference; their paid amount is best-effort distributed across unattributed paid installments in due-date order. Legacy paid amounts without a recoverable payment date remain treated as paid throughout historical views because their original date cannot be derived safely.
 
 Spending reports continue to classify credit purchases by transaction date; only the cash EOM forecast follows bill due dates.
+
+---
+
+## Planned: salary-cycle forecast (TODO)
+
+The calendar-month EOM above stops at the selected month-end, so early next-month bills (e.g. Y15 on the 2nd, PF on the 5th, TikTok on the 10th, Grab on the 11th) are not deducted. A fixed 30-day window is not cycle-safe: on the 27th it would reach the next 26th salary and cross into the following cycle.
+
+Plan:
+- Add an explicit **"This is my salary"** flag to one recurring income.
+- Add a rolling card anchored to salary cycles:
+  - current cycle = [latest salary date, next salary date)
+  - next cycle = [next salary date, the following salary date)
+  - the boundary salary is excluded; the starting salary is included when it is still in the future.
+- Show current balance, expected in/out, **available at cycle end**, **lowest balance/date**, and a date-sorted timeline (bills + recurring + transfers).
+- When the salary is posted early, use the actual posted transaction in the starting balance and skip the expected duplicate; the next boundary comes from the schedule (set the salary due day to the real pay day). Show the assumed salary date.
+- Fallback when no salary is flagged: **End of month** (not a fixed 30 days).
+- Open UX questions: default cycle (current vs next vs both), salary flag vs Salary category, schedule vs actual+1 month for the next boundary.

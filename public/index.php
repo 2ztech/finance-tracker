@@ -384,7 +384,7 @@ if ($route === 'institutions/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     $id = (int) ($_POST['id'] ?? 0);
     try {
-        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null);
+        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null, false);
     } catch (InvalidArgumentException $e) {
         header('Location: /accounts?msg=icon_upload_invalid');
         exit;
@@ -430,7 +430,7 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     Auth::requireLogin();
     $id = (int) ($_POST['id'] ?? 0);
     try {
-        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null);
+        $iconUpload = IconUpload::fromUpload($_FILES['icon_file'] ?? null, false);
     } catch (InvalidArgumentException $e) {
         header('Location: /accounts?msg=icon_upload_invalid');
         exit;
@@ -442,6 +442,7 @@ if ($route === 'accounts/save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         'name'           => trim($_POST['name'] ?? ''),
         'kind'           => $kind,
         'paylater_role'  => in_array($_POST['paylater_role'] ?? '', ['bnpl', 'financing', 'both'], true) ? $_POST['paylater_role'] : null,
+        'template_key'   => trim((string) ($_POST['template_key'] ?? '')) ?: null,
         'color_hex'      => $_POST['color_hex'] ?? '#4f6ef7',
         'icon_data'      => $iconUpload['data'] ?? null,
         'icon_mime'      => $iconUpload['mime'] ?? 'image/png',

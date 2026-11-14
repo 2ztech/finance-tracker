@@ -291,7 +291,7 @@ function navIcon(string $icon): string
             document.getElementById('sidebar-backdrop').classList.toggle('hidden');
         }
 
-        const appModals = ['editModal', 'accountModal', 'institutionModal', 'templateModal', 'wizardModal', 'payModal', 'refundModal']
+        const appModals = ['editModal', 'accountModal', 'institutionModal', 'templateModal', 'sectionChooserModal', 'wizardModal', 'payModal', 'refundModal']
             .map((id) => document.getElementById(id)).filter(Boolean);
         appModals.forEach((modal) => {
             modal.setAttribute('role', 'dialog');
@@ -328,6 +328,7 @@ function navIcon(string $icon): string
                     accountModal: 'closeAccountForm',
                     institutionModal: 'closeInstitutionForm',
                     templateModal: 'closeTemplateChooser',
+                    sectionChooserModal: 'closeSectionChooser',
                     wizardModal: 'closeWizard',
                     payModal: 'closePay',
                     refundModal: 'closeRefund',

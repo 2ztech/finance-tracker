@@ -17,7 +17,7 @@ $toasts = [
     'blocked'       => ['Cannot delete: this account still has transactions.', 'danger'],
     'name_required' => ['Account name is required.', 'danger'],
     'create_failed' => ['Could not create the account. Please try again.', 'danger'],
-    'icon_upload_invalid' => ['Icon rejected. Use a square PNG, JPEG, WebP, or ICO within the displayed size and file limits.', 'danger'],
+    'icon_upload_invalid' => ['Logo rejected. Use a PNG, JPEG, WebP, or ICO up to 512 px on each side (max 512 KiB).', 'danger'],
     'reassigned'    => ['Transactions reassigned.', 'success'],
 ];
 
@@ -65,6 +65,8 @@ ob_start();
         }
         $instForJs = $inst;
         $instForJs['logo_url'] = $logo['url'] ?? null;
+        $tplMatch = InstitutionTemplate::findByName((string) $inst['name']);
+        $instForJs['template_key'] = $tplMatch['key'] ?? null;
         ?>
         <div class="rounded-xl p-4" data-institution-card="<?= $instId ?>" style="background:var(--bg-alt);border:1px solid <?= $isActiveInst ? 'var(--accent)' : 'var(--border)' ?>;box-shadow:var(--shadow);">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -93,7 +95,7 @@ ob_start();
                     </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
-                    <button type="button" onclick="openAccountForm(<?= $instId ?>)" class="rounded-lg border px-2.5 py-1.5 text-xs font-medium" style="border-color:var(--border);color:var(--text-secondary);">+ Section</button>
+                    <button type="button" onclick='openSectionChooser(<?= json_encode($instForJs, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' class="rounded-lg border px-2.5 py-1.5 text-xs font-medium" style="border-color:var(--border);color:var(--text-secondary);">+ Section</button>
                     <button type="button" onclick='editInstitution(<?= json_encode($instForJs, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' class="rounded p-1.5" style="color:var(--text-muted);" title="Edit account">
                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                     </button>
@@ -292,6 +294,32 @@ ob_start();
     </div>
 </div>
 
+<!-- Section chooser (add a section to an existing institution) -->
+<div id="sectionChooserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4" style="backdrop-filter:blur(4px);">
+    <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border p-5" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow-lg);">
+        <div class="mb-4 flex items-start justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold" style="color:var(--text);">Add section</h3>
+                <p id="sectionChooserSubtitle" class="mt-0.5 text-xs" style="color:var(--text-secondary);"></p>
+            </div>
+            <button type="button" onclick="closeSectionChooser()" class="rounded p-1" style="color:var(--text-muted);" aria-label="Close">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <input type="search" id="sectionChooserSearch" oninput="filterSectionChooser()" placeholder="Search section type" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">
+        <div id="sectionChooserBody" class="mt-4 space-y-4"></div>
+        <button type="button" onclick="openCustomSectionForm()" class="mt-4 flex w-full items-center gap-3 rounded-xl border p-3 text-left transition hover:opacity-90" style="border-color:var(--border);background:var(--bg);">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style="background:var(--bg-hover);color:var(--text-secondary);">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            </span>
+            <span class="min-w-0">
+                <span class="block text-sm font-semibold" style="color:var(--text);">Custom section</span>
+                <span class="block text-[11px]" style="color:var(--text-muted);">Fill in the advanced form yourself.</span>
+            </span>
+        </button>
+    </div>
+</div>
+
 <!-- One-question-per-screen wizard -->
 <div id="wizardModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4" style="backdrop-filter:blur(4px);">
     <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border p-6" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow-lg);">
@@ -349,7 +377,7 @@ ob_start();
             <div class="rounded-xl border p-3" style="border-color:var(--border);background:var(--bg-hover);">
                 <div class="flex items-center gap-3">
                     <img id="inst_icon_preview" class="hidden h-10 w-10 rounded-lg object-contain" alt="Account icon preview">
-                    <p class="text-xs" style="color:var(--text-secondary);">Optional account logo. PNG, JPEG, WebP, or ICO; square 32–512 px; max 512 KiB.</p>
+                    <p class="text-xs" style="color:var(--text-secondary);">Optional account logo. PNG, JPEG, WebP, or ICO; up to 512 px each side; max 512 KiB. Wide logos are allowed.</p>
                 </div>
                 <input type="file" name="icon_file" id="inst_icon_file" accept="image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico" class="mt-2 block w-full text-xs" style="color:var(--text-secondary);">
                 <label id="inst_clear_icon_wrap" class="mt-2 hidden items-center gap-2 text-xs" style="color:var(--text-secondary);"><input type="checkbox" name="clear_icon" id="inst_clear_icon"> Remove uploaded logo</label>
@@ -376,6 +404,7 @@ ob_start();
             <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
             <input type="hidden" name="id" id="acc_id" value="">
             <input type="hidden" name="institution_id" id="acc_institution_id" value="">
+<input type="hidden" name="template_key" id="acc_template_key" value="">
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="mb-1 block text-xs font-medium" style="color:var(--text-secondary);">Name</label>
@@ -397,7 +426,7 @@ ob_start();
             <div class="rounded-xl border p-3" style="border-color:var(--border);background:var(--bg-hover);">
                 <div class="flex items-center gap-3">
                     <img id="acc_icon_preview" class="hidden h-10 w-10 rounded-lg object-contain" alt="Section icon preview">
-                    <p class="text-xs" style="color:var(--text-secondary);">Optional section icon. PNG, JPEG, WebP, or ICO; square 32–512 px; max 512 KiB.</p>
+                    <p class="text-xs" style="color:var(--text-secondary);">Optional section icon. PNG, JPEG, WebP, or ICO; up to 512 px each side; max 512 KiB. Wide logos are allowed.</p>
                 </div>
                 <div class="mt-2 flex items-center gap-2"><button type="button" id="acc_icon_choose" aria-controls="acc_icon_file" class="rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-80" style="border-color:var(--border);background:var(--bg-alt);color:var(--text);">Choose image</button><span id="acc_icon_filename" class="truncate text-xs" style="color:var(--text-muted);">No file selected</span></div>
                 <input type="file" name="icon_file" id="acc_icon_file" accept="image/png,image/jpeg,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico" class="sr-only" aria-label="Upload section icon">
@@ -487,6 +516,8 @@ ob_start();
 <script>
 window.INSTITUTION_TEMPLATES = <?= json_encode(InstitutionTemplate::all(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 window.HAS_MAIN_ACCOUNT = <?= $hasMain ? 'true' : 'false' ?>;
+window.GENERIC_SECTIONS = <?= json_encode(InstitutionTemplate::genericSections(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+window.CURRENT_MONTH = <?= json_encode(date('Y-m'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
 /* ---------- helpers ---------- */
 function templateShow(id) { var m = document.getElementById(id); m.classList.remove('hidden'); m.classList.add('flex'); }
@@ -530,6 +561,132 @@ function filterTemplates() {
     });
 }
 
+/* ---------- section chooser (add a section to an institution) ---------- */
+let sectionChooserInst = null;
+
+function openSectionChooser(inst) {
+    sectionChooserInst = inst;
+    document.getElementById('sectionChooserSubtitle').textContent = inst.name;
+    document.getElementById('sectionChooserSearch').value = '';
+    var body = document.getElementById('sectionChooserBody');
+    var html = '';
+    var tpl = inst.template_key ? window.INSTITUTION_TEMPLATES[inst.template_key] : null;
+    if (tpl) {
+        html += '<section data-section-group><p class="mb-2 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">Provider products</p><div class="grid grid-cols-1 gap-2 sm:grid-cols-2">';
+        tpl.sections.forEach(function (section) {
+            var key = inst.template_key + ':' + section.key;
+            var added = sectionIsAdded(inst, key, section, false);
+            var allow = section.presets && section.presets.allow_multiple === true;
+            html += sectionCardHtml(inst, 'institution', key, section, added, allow);
+        });
+        html += '</div></section>';
+    }
+    html += '<section data-section-group><p class="mb-2 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">Other types</p><div class="grid grid-cols-1 gap-2 sm:grid-cols-2">';
+    window.GENERIC_SECTIONS.forEach(function (section) {
+        var key = 'generic:' + section.key;
+        var added = sectionIsAdded(inst, key, section, true);
+        var allow = section.presets && section.presets.allow_multiple === true;
+        html += sectionCardHtml(inst, 'generic', key, section, added, allow);
+    });
+    html += '</div></section>';
+    body.innerHTML = html;
+    templateShow('sectionChooserModal');
+    document.getElementById('sectionChooserSearch').focus();
+}
+
+function sectionIsAdded(inst, templateKey, section) {
+    if (section.presets && section.presets.allow_multiple === true) return false;
+    var sections = inst.sections || [];
+    return sections.some(function (existing) {
+        if (existing.template_key) return existing.template_key === templateKey;
+        // Legacy sections have no template key: match their semantics so
+        // “Added” stays correct for imported/renamed sections.
+        if (section.kind === 'paylater') {
+            var role = (section.presets && section.presets.role) || 'bnpl';
+            if ((existing.paylater_role || 'bnpl') !== role) return false;
+            if (role === 'financing') return true;
+            var mode = (section.presets && section.presets.bnpl_mode) || 'cycle';
+            return (existing.bnpl_mode || 'cycle') === mode;
+        }
+        if (section.kind === 'credit') return existing.kind === 'credit';
+        if (section.kind === 'savings') return existing.kind === 'savings';
+        return String(existing.name || '').toLowerCase() === String(section.default_name || '').toLowerCase();
+    });
+}
+
+function sectionCardHtml(inst, source, templateKey, section, added, allowMultiple) {
+    var disabled = added && !allowMultiple;
+    var action = added ? (allowMultiple ? 'Add another' : 'Added') : 'Add';
+    var role = section.presets && section.presets.role ? section.presets.role : '';
+    var roleLabel = section.kind === 'savings' ? 'Savings' : (section.kind === 'credit' ? 'Credit card' : (role === 'financing' ? 'Financing' : 'PayLater'));
+    var search = (section.default_name + ' ' + section.label + ' ' + section.kind + ' ' + role).toLowerCase();
+    var click = disabled ? '' : ' onclick="selectSectionWizard(\'' + source + '\',' + inst.id + ',\'' + templateKey + '\',\'' + section.key + '\')"';
+    return '<button type="button" data-section-card data-search="' + escHtml(search) + '"' + click + ' ' + (disabled ? 'disabled' : '') + ' class="flex items-center gap-3 rounded-xl border p-3 text-left transition ' + (disabled ? 'opacity-50' : 'hover:opacity-90') + '" style="border-color:var(--border);background:var(--bg);">'
+        + '<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="background:var(--bg-hover);color:var(--text-secondary);">' + escHtml((section.default_name || '?').charAt(0)) + '</span>'
+        + '<span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold" style="color:var(--text);">' + escHtml(section.default_name) + '</span>'
+        + '<span class="block truncate text-[11px]" style="color:var(--text-muted);">' + escHtml(roleLabel + ' · ' + section.label) + '</span></span>'
+        + '<span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" style="background:var(--bg-hover);color:var(--text-muted);">' + escHtml(action) + '</span></button>';
+}
+
+function filterSectionChooser() {
+    var q = document.getElementById('sectionChooserSearch').value.trim().toLowerCase();
+    document.querySelectorAll('#sectionChooserBody [data-section-group]').forEach(function (group) {
+        var visible = 0;
+        group.querySelectorAll('[data-section-card]').forEach(function (card) {
+            var match = !q || (card.dataset.search || '').indexOf(q) !== -1;
+            card.classList.toggle('hidden', !match);
+            if (match) visible++;
+        });
+        group.classList.toggle('hidden', visible === 0);
+    });
+}
+
+function closeSectionChooser() { templateHide('sectionChooserModal'); }
+
+function openCustomSectionForm() {
+    if (!sectionChooserInst) return;
+    var instId = sectionChooserInst.id;
+    closeSectionChooser();
+    openAccountForm(instId);
+}
+
+function selectSectionWizard(source, instId, templateKey, sectionKey) {
+    var inst = sectionChooserInst;
+    if (!inst) return;
+    var section;
+    if (source === 'institution') {
+        var tpl = window.INSTITUTION_TEMPLATES[inst.template_key];
+        section = tpl && tpl.sections.find(function (s) { return s.key === sectionKey; });
+    } else {
+        section = window.GENERIC_SECTIONS.find(function (s) { return s.key === sectionKey; });
+    }
+    if (!section) return;
+
+    closeSectionChooser();
+    wiz.mode = 'section';
+    wiz.institutionId = instId;
+    wiz.templateKey = templateKey;
+    wiz.sectionKey = sectionKey;
+    wiz.source = source;
+    wiz.tpl = { default_name: inst.name, color_hex: inst.color_hex || '#4f6ef7', sections: [section] };
+    wiz.state = { sections: {} };
+    wiz.state.sections[section.key] = { enabled: 1 };
+
+    document.getElementById('wiz_template_key').value = templateKey;
+    document.getElementById('wizardTitle').textContent = inst.name;
+    document.getElementById('wiz_subtitle').textContent = 'Add section · ' + section.label;
+    var logoSrc = inst.logo_url || (inst.icon_data ? 'data:' + (inst.icon_mime || 'image/png') + ';base64,' + inst.icon_data : null);
+    document.getElementById('wiz_tile').innerHTML = logoSrc ? '<img class="h-10 w-10 rounded-lg object-contain" src="' + logoSrc + '" alt="">' : '';
+    document.getElementById('wiz_create').textContent = 'Create Section';
+    document.getElementById('wiz_next').textContent = 'Next';
+
+    buildSteps();
+    wiz.idx = 0;
+    focusAccountsTrigger();
+    templateShow('wizardModal');
+    renderWizard();
+}
+
 /* ---------- one-question wizard ---------- */
 let wiz = { key: null, tpl: null, steps: [], idx: 0, state: { sections: {} } };
 
@@ -544,8 +701,13 @@ function selectTemplate(key) {
     closeTemplateChooser();
 
     wiz.key = key;
+    wiz.mode = 'institution';
+    wiz.institutionId = null;
+    wiz.templateKey = null;
+    wiz.sectionKey = null;
     wiz.tpl = tpl;
     wiz.state = { sections: {} };
+    document.getElementById('wiz_create').textContent = 'Create Account';
     tpl.sections.forEach(function (s) {
         wiz.state.sections[s.key] = {};
         if (tpl.sections.length === 1) wiz.state.sections[s.key].enabled = 1;
@@ -645,6 +807,12 @@ function renderWizard() {
                 + '<p id="wiz_bill_due" class="text-[11px]" style="color:var(--text-secondary);">' + (due ? 'Payment due on the ' + due + 'th.' : '') + '</p>';
             return;
         }
+        if (q.type === 'day') {
+            body.innerHTML = '<p class="text-sm font-medium" style="color:var(--text);">' + escHtml(q.label) + '</p>'
+                + '<input id="wiz_q_input" type="number" min="1" max="31" value="' + escHtml(st[q.field] || '') + '" class="w-full rounded-lg border px-3 py-2 text-sm" style="background:var(--bg);border-color:var(--border);color:var(--text);">'
+                + '<p class="text-[11px]" style="color:var(--text-secondary);">A day between 1 and 31.</p>';
+            return;
+        }
         if (q.type === 'main') {
             var yes = String(st.make_main || '') === '1';
             var note = window.HAS_MAIN_ACCOUNT
@@ -725,6 +893,8 @@ function captureStep() {
         st[q.field] = document.getElementById('wiz_q_input').value;
     } else if (q.type === 'bill_date') {
         st.bill_date = document.getElementById('wiz_q_input').value;
+    } else if (q.type === 'day') {
+        st[q.field] = document.getElementById('wiz_q_input').value;
     } else if (q.type === 'choice') {
         var selected = document.querySelector('input[name="wiz_choice"]:checked');
         if (!selected) {
@@ -769,6 +939,7 @@ function dueSummary(s, st) {
     if (billQ && st.bill_date) {
         return 'the ' + Math.min(31, Number(st.bill_date) + (billQ.due_offset || 0)) + 'th';
     }
+    if (st.due_day) return st.due_day + 'th';
     if (s.presets && s.presets.due_day) return s.presets.due_day + 'th';
     return '';
 }
@@ -785,6 +956,7 @@ function renderReview(body) {
             if (String(st.make_main) === '1') rows.push(['Main account', 'Yes']);
         } else {
             if (st.credit_limit) rows.push(['Credit limit', 'RM ' + Number(st.credit_limit).toFixed(2)]);
+            if (st.statement_day) rows.push(['Statement closes', st.statement_day + 'th']);
             var due = dueSummary(s, st);
             if (due) rows.push(['Payment due', due]);
         }
@@ -807,8 +979,62 @@ function renderReview(body) {
 
 function wizardCreate() {
     if (!captureStep()) return;
+    if (wiz.mode === 'section') {
+        fillSectionForm();
+        return;
+    }
     document.getElementById('wiz_payload').value = JSON.stringify(wiz.state);
     document.getElementById('wizardForm').submit();
+}
+
+function fillSectionForm() {
+    var section = wiz.tpl.sections[0];
+    var st = sectionState(section.key);
+    var presets = section.presets || {};
+    var isSavings = section.kind === 'savings';
+    var stmt = presets.statement_day != null ? presets.statement_day : '';
+    var due = presets.due_day != null ? presets.due_day : '';
+
+    if (st.choice) {
+        var choiceQ = section.questions.find(function (q) { return q.type === 'choice'; });
+        var opt = choiceQ && choiceQ.options.find(function (o) { return String(o.value) === String(st.choice); });
+        if (opt && opt.set) {
+            if (opt.set.statement_day != null) stmt = opt.set.statement_day;
+            if (opt.set.due_day != null) due = opt.set.due_day;
+        }
+    }
+    if (st.bill_date) {
+        var billQ = section.questions.find(function (q) { return q.type === 'bill_date'; });
+        var bill = Math.max(1, Math.min(31, Number(st.bill_date)));
+        stmt = Math.max(1, bill - 1);
+        due = Math.min(31, bill + (billQ ? (billQ.due_offset || 0) : 0));
+    }
+    if (st.statement_day) stmt = st.statement_day;
+    if (st.due_day) due = st.due_day;
+
+    document.getElementById('acc_id').value = '';
+    document.getElementById('acc_institution_id').value = wiz.institutionId;
+    document.getElementById('acc_template_key').value = wiz.templateKey || '';
+    document.getElementById('acc_name').value = st.name || section.default_name;
+    document.getElementById('acc_kind').value = section.kind;
+    document.getElementById('acc_role').value = presets.role || (section.kind === 'paylater' ? 'bnpl' : '');
+    document.getElementById('acc_color').value = wiz.tpl.color_hex || '#4f6ef7';
+    document.getElementById('acc_opening').value = isSavings ? (st.balance || '0') : '0';
+    document.getElementById('acc_limit').value = st.credit_limit || '';
+    document.getElementById('acc_start').value = isSavings ? (window.CURRENT_MONTH || '') : '';
+    document.getElementById('acc_primary').checked = isSavings && String(st.make_main || '') === '1';
+    document.getElementById('acc_stmt').value = stmt;
+    document.getElementById('acc_due').value = due;
+    document.getElementById('acc_bnpl').value = presets.bnpl_mode || 'cycle';
+    document.getElementById('acc_offset').value = String(presets.first_due_offset != null ? presets.first_due_offset : (presets.bnpl_mode === 'per_purchase' ? 0 : 1));
+    document.getElementById('acc_partial').checked = Number(presets.allow_partial) === 1;
+    document.getElementById('acc_nointerest').value = '';
+    document.getElementById('acc_archived').checked = false;
+    document.getElementById('acc_clear_icon').checked = false;
+    document.getElementById('acc_icon_file').value = '';
+    document.getElementById('acc_icon_filename').textContent = 'No file selected';
+    toggleAccountFields();
+    document.querySelector('#accountModal form').submit();
 }
 
 /* ---------- section modal ---------- */
@@ -827,6 +1053,7 @@ function openAccountForm(institutionId) {
     document.getElementById('accountModalTitle').textContent = 'Add Section';
     document.getElementById('acc_id').value = '';
     document.getElementById('acc_institution_id').value = institutionId || '';
+    document.getElementById('acc_template_key').value = '';
     document.getElementById('acc_name').value = '';
     document.getElementById('acc_kind').value = 'savings';
     document.getElementById('acc_role').value = 'bnpl';
@@ -858,6 +1085,7 @@ function editAccount(a) {
     document.getElementById('accountModalTitle').textContent = 'Edit Section';
     document.getElementById('acc_id').value = a.id;
     document.getElementById('acc_institution_id').value = a.institution_id || '';
+    document.getElementById('acc_template_key').value = a.template_key || '';
     document.getElementById('acc_name').value = a.name;
     document.getElementById('acc_kind').value = a.kind;
     document.getElementById('acc_role').value = a.paylater_role || 'bnpl';
@@ -915,8 +1143,8 @@ document.getElementById('acc_icon_file').addEventListener('change', function () 
     var img = new Image();
     img.onload = function () {
         var max = ico ? 256 : 512;
-        if (img.naturalWidth !== img.naturalHeight || img.naturalWidth < 32 || img.naturalWidth > max) {
-            reject(ico ? 'ICO frames must be square and 32–256 pixels.' : 'The icon must be square and 32–512 pixels.');
+        if (img.naturalWidth < 16 || img.naturalHeight < 16 || img.naturalWidth > max || img.naturalHeight > max) {
+            reject(ico ? 'ICO frames must be 16–256 pixels.' : 'The logo must be 16–512 pixels on each side.');
             URL.revokeObjectURL(img.src);
             return;
         }

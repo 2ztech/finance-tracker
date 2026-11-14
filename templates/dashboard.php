@@ -246,6 +246,8 @@ ob_start();
                 <span class="rounded px-1.5 py-0.5" style="background:var(--bg-hover);">RM <?= number_format($eom['balance'], 2) ?> balance</span>
                 <?php if ($eom['recurring_income'] > 0): ?><span>+RM <?= number_format($eom['recurring_income'], 2) ?> recurring in</span><?php endif; ?>
                 <?php if ($eom['recurring_expense'] > 0): ?><span>−RM <?= number_format($eom['recurring_expense'], 2) ?> recurring out</span><?php endif; ?>
+                <?php if ($eom['transfer_in'] > 0): ?><span>+RM <?= number_format($eom['transfer_in'], 2) ?> auto transfers in</span><?php endif; ?>
+                <?php if ($eom['transfer_out'] > 0): ?><span>−RM <?= number_format($eom['transfer_out'], 2) ?> auto transfers out</span><?php endif; ?>
                 <?php foreach ($eom['bills_by_account'] as $billAccount => $billAmount): ?>
                     <span>−RM <?= number_format($billAmount, 2) ?> <?= htmlspecialchars((string) $billAccount, ENT_QUOTES, 'UTF-8') ?></span>
                 <?php endforeach; ?>

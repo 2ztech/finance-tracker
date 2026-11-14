@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class Transfer
 {
-    public static function create(int $from, int $to, float $amount, string $date, string $description, string $kind = 'internal'): int
+    public static function create(int $from, int $to, float $amount, string $date, string $description, string $kind = 'internal', ?int $commitmentId = null, ?string $commitmentPeriod = null): int
     {
         // Reject invalid transfers at the model layer as well as in the route.
         if ($from <= 0 || $to <= 0 || $from === $to || $amount <= 0) {
@@ -16,10 +16,10 @@ final class Transfer
 
         $db = Database::getConnection();
         $stmt = $db->prepare("
-            INSERT INTO transfers (date, from_account_id, to_account_id, amount, description, kind, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transfers (date, from_account_id, to_account_id, amount, description, kind, commitment_id, commitment_period, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$date, $from, $to, $amount, $description, $kind, date('Y-m-d H:i:s')]);
+        $stmt->execute([$date, $from, $to, $amount, $description, $kind, $commitmentId, $commitmentPeriod, date('Y-m-d H:i:s')]);
         return (int) $db->lastInsertId();
     }
 

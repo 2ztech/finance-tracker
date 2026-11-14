@@ -95,6 +95,23 @@ test.describe('Category and account icons', () => {
     await expect(page.locator('[data-section-row]', { hasText: 'E2E Icon Account' }).first().locator('img')).toHaveCount(0);
   });
 
+  test('accounts accept a non-square wordmark PNG', async ({ page }) => {
+    await page.goto('/accounts');
+    await page.click('text=+ Add Account');
+    await page.click('#templateModal >> text=Custom account');
+    await expect(page.locator('#accountModal')).toBeVisible();
+    await page.fill('#acc_name', 'E2E Wordmark Account');
+    await page.setInputFiles('#acc_icon_file', { name: 'wordmark.png', mimeType: 'image/png', buffer: makePng(96, 32) });
+    await expect(page.locator('#acc_icon_preview')).toBeVisible();
+    await Promise.all([
+      page.waitForLoadState('networkidle'),
+      page.click('#accountModal button[type="submit"]'),
+    ]);
+
+    const row = page.locator('[data-section-row]', { hasText: 'E2E Wordmark Account' }).first();
+    await expect(row.locator('img')).toBeVisible();
+  });
+
   test('wrong icon dimensions are rejected in the picker', async ({ page }) => {
     await page.goto('/categories');
     const input = page.locator('#category_icon_file');

@@ -131,6 +131,7 @@ final class Database
                 name TEXT NOT NULL,
                 kind TEXT NOT NULL CHECK(kind IN ('savings', 'credit', 'paylater')),
                 paylater_role TEXT,
+                template_key TEXT,
                 color_hex TEXT NOT NULL DEFAULT '#4f6ef7',
                 bnpl_mode TEXT CHECK(bnpl_mode IN ('cycle', 'per_purchase')),
                 statement_day INTEGER,
@@ -155,6 +156,8 @@ final class Database
                 amount REAL NOT NULL,
                 description TEXT,
                 kind TEXT NOT NULL DEFAULT 'internal',
+                commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL,
+                commitment_period TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (from_account_id) REFERENCES accounts(id) ON DELETE CASCADE,
                 FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -232,6 +235,9 @@ final class Database
             "ALTER TABLE commitments ADD COLUMN start_date TEXT",
             "ALTER TABLE commitments ADD COLUMN end_date TEXT",
             "ALTER TABLE commitments ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
+            "ALTER TABLE commitments ADD COLUMN to_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
+            "ALTER TABLE transfers ADD COLUMN commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL",
+            "ALTER TABLE transfers ADD COLUMN commitment_period TEXT",
             "ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL",
             "ALTER TABLE transactions ADD COLUMN plan_id INTEGER",
             "ALTER TABLE transactions ADD COLUMN refund_of_id INTEGER",
@@ -242,6 +248,7 @@ final class Database
             "ALTER TABLE accounts ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE accounts ADD COLUMN institution_id INTEGER REFERENCES institutions(id) ON DELETE SET NULL",
             "ALTER TABLE accounts ADD COLUMN paylater_role TEXT",
+            "ALTER TABLE accounts ADD COLUMN template_key TEXT",
             "ALTER TABLE paylater_plans ADD COLUMN kind TEXT NOT NULL DEFAULT 'purchase'",
             "ALTER TABLE paylater_plans ADD COLUMN description TEXT",
         ];
@@ -300,6 +307,7 @@ final class Database
             "CREATE INDEX IF NOT EXISTS idx_commitments_account ON commitments(account_id)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_commitment ON transactions(commitment_id)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_commitment_period ON transactions(commitment_id, commitment_period) WHERE commitment_period IS NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transfers_commitment_period ON transfers(commitment_id, commitment_period) WHERE commitment_period IS NOT NULL",
         ] as $index) {
             try {
                 $db->exec($index);

@@ -6,6 +6,7 @@ final class IconUpload
 {
     public const MAX_BYTES = 524_288;
     public const MIN_DIMENSION = 32;
+    public const MIN_LOGO_DIMENSION = 16;
     public const MAX_DIMENSION = 512;
 
     /**
@@ -15,7 +16,7 @@ final class IconUpload
      *
      * @return array{data:string,mime:string}|null
      */
-    public static function fromUpload(?array $file): ?array
+    public static function fromUpload(?array $file, bool $requireSquare = true): ?array
     {
         if ($file === null || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
         if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
@@ -42,12 +43,17 @@ final class IconUpload
         }
 
         if ($mime === 'image/x-icon') {
-            self::validateIco($path, (int) $size);
+            self::validateIco($path, (int) $size, $requireSquare);
         } else {
             $image = @getimagesize($path);
-            if (!$image || $image['mime'] !== $mime || $image[0] < self::MIN_DIMENSION || $image[1] < self::MIN_DIMENSION
-                || $image[0] > self::MAX_DIMENSION || $image[1] > self::MAX_DIMENSION || $image[0] !== $image[1]) {
-                throw new InvalidArgumentException('Icons must be square and between 32 × 32 and 512 × 512 pixels.');
+            $min = $requireSquare ? self::MIN_DIMENSION : self::MIN_LOGO_DIMENSION;
+            if (!$image || $image['mime'] !== $mime
+                || $image[0] < $min || $image[1] < $min
+                || $image[0] > self::MAX_DIMENSION || $image[1] > self::MAX_DIMENSION
+                || ($requireSquare && $image[0] !== $image[1])) {
+                throw new InvalidArgumentException($requireSquare
+                    ? 'Icons must be square and between 32 × 32 and 512 × 512 pixels.'
+                    : 'Logos must be between 16 × 16 and 512 × 512 pixels.');
             }
         }
 
@@ -56,7 +62,7 @@ final class IconUpload
         return ['data' => base64_encode($bytes), 'mime' => $mime];
     }
 
-    private static function validateIco(string $path, int $size): void
+    private static function validateIco(string $path, int $size, bool $requireSquare = true): void
     {
         $bytes = file_get_contents($path);
         if ($bytes === false || $size < 22) {
@@ -76,12 +82,19 @@ final class IconUpload
             $height = $entry['height'] === 0 ? 256 : (int) $entry['height'];
             $length = (int) $entry['length'];
             $offset = (int) $entry['offset'];
-            if ($width < 16 || $height < 16 || $width > 256 || $height > 256 || $width !== $height
+            if ($width < 16 || $height < 16 || $width > 256 || $height > 256
+                || ($requireSquare && $width !== $height)
                 || $length <= 0 || $offset < 6 + 16 * $count || $offset + $length > $size) {
-                throw new InvalidArgumentException('ICO files must contain square frames from 16 × 16 to 256 × 256 pixels.');
+                throw new InvalidArgumentException($requireSquare
+                    ? 'ICO files must contain square frames from 16 × 16 to 256 × 256 pixels.'
+                    : 'ICO files must contain frames from 16 × 16 to 256 × 256 pixels.');
             }
-            if ($width >= self::MIN_DIMENSION) $hasUsableFrame = true;
+            if ($width >= ($requireSquare ? self::MIN_DIMENSION : self::MIN_LOGO_DIMENSION)) $hasUsableFrame = true;
         }
-        if (!$hasUsableFrame) throw new InvalidArgumentException('The ICO file must include at least one frame of 32 × 32 pixels or larger.');
+        if (!$hasUsableFrame) {
+            throw new InvalidArgumentException($requireSquare
+                ? 'The ICO file must include at least one frame of 32 × 32 pixels or larger.'
+                : 'The ICO file must include at least one usable frame.');
+        }
     }
 }

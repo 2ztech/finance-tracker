@@ -178,7 +178,7 @@ final class InstitutionTemplate
     private static function bank(string $key, string $name, string $color): array
     {
         return self::institution($key, $name, $name, $color, $key, [
-            self::section('savings', 'Savings', $name . ' Savings', 'savings', [], [
+            self::section('savings', 'Savings', $name . ' Savings', 'savings', ['allow_multiple' => true], [
                 self::qName(),
                 self::qMoney('balance', "What's your current balance?"),
                 self::qMain(),
@@ -219,6 +219,11 @@ final class InstitutionTemplate
         return ['type' => 'info', 'text' => $text];
     }
 
+    private static function qDay(string $field, string $label): array
+    {
+        return ['type' => 'day', 'field' => $field, 'label' => $label];
+    }
+
     /** @param array<int, array<string, mixed>> $options */
     private static function qChoice(string $field, string $label, array $options): array
     {
@@ -228,6 +233,78 @@ final class InstitutionTemplate
     private static function qBillDate(string $label, int $dueOffset): array
     {
         return ['type' => 'bill_date', 'field' => 'bill_date', 'label' => $label, 'due_offset' => $dueOffset];
+    }
+
+    /**
+     * Generic section types for custom institutions or products not in the
+     * provider catalog.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function genericSections(): array
+    {
+        return [
+            self::section('generic_savings', 'Savings / Wallet', 'Savings', 'savings', ['allow_multiple' => true], [
+                self::qName(),
+                self::qMoney('balance', "What's your current balance?"),
+                self::qMain(),
+            ]),
+            self::section('generic_credit', 'Credit card', 'Credit card', 'credit', ['allow_multiple' => true], [
+                self::qName(),
+                self::qMoney('credit_limit', "What's your credit limit?", true),
+                self::qDay('statement_day', 'When does your statement close each month?'),
+                self::qDay('due_day', 'When is your payment due each month?'),
+            ]),
+            self::section('generic_paylater_monthly', 'PayLater · monthly bill', 'PayLater', 'paylater', [
+                'bnpl_mode' => 'cycle',
+                'first_due_offset' => 1,
+                'allow_partial' => 0,
+                'role' => 'bnpl',
+                'allow_multiple' => false,
+            ], [
+                self::qName(),
+                self::qMoney('credit_limit', "What's your credit limit?", true),
+                self::qDay('due_day', 'When is your payment due each month?'),
+            ]),
+            self::section('generic_paylater_instalments', 'PayLater · instalments', 'PayLater', 'paylater', [
+                'bnpl_mode' => 'per_purchase',
+                'first_due_offset' => 0,
+                'allow_partial' => 0,
+                'role' => 'bnpl',
+                'allow_multiple' => false,
+            ], [
+                self::qName(),
+                self::qMoney('credit_limit', "What's your credit limit?", true),
+                self::qInfo('Each purchase gets its own instalment schedule.'),
+            ]),
+            self::section('generic_financing', 'Personal Financing / Loan', 'Financing', 'paylater', [
+                'bnpl_mode' => 'cycle',
+                'first_due_offset' => 1,
+                'allow_partial' => 0,
+                'role' => 'financing',
+                'allow_multiple' => false,
+            ], [
+                self::qName(),
+                self::qMoney('credit_limit', "What's your credit limit?", true),
+                self::qInfo('Add financing plans from the Financing page.'),
+            ]),
+        ];
+    }
+
+    /** Match an institution name to a catalog template (e.g. “Maybank 2”). */
+    public static function findByName(?string $name): ?array
+    {
+        if ($name === null || $name === '') {
+            return null;
+        }
+        $needle = strtolower($name);
+        foreach (self::all() as $template) {
+            if (str_contains($needle, strtolower((string) $template['key']))
+                || str_contains($needle, strtolower((string) $template['default_name']))) {
+                return $template;
+            }
+        }
+        return null;
     }
 
     /** @return array<string, array<string, mixed>> */
@@ -359,6 +436,7 @@ final class InstitutionTemplate
             $data = [
                 'name' => trim((string) ($in['name'] ?? $def['default_name'])),
                 'kind' => $def['kind'],
+                'template_key' => $key . ':' . $def['key'],
                 'color_hex' => $t['color_hex'],
                 'icon_data' => null,
                 'icon_mime' => 'image/png',

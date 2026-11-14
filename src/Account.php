@@ -70,16 +70,17 @@ final class Account
             : null;
         $stmt = $db->prepare("
             INSERT INTO accounts
-                (institution_id, name, kind, paylater_role, color_hex, icon_data, icon_mime, bnpl_mode, statement_day, due_day,
+                (institution_id, name, kind, paylater_role, template_key, color_hex, icon_data, icon_mime, bnpl_mode, statement_day, due_day,
                  first_due_offset, allow_partial, no_interest_months, credit_limit, opening_balance, start_month,
                  archived, sort_order, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         ");
         $stmt->execute([
             $institutionId,
             $d['name'],
             $d['kind'],
             $role,
+            $d['template_key'] ?? null,
             $d['color_hex'] ?? '#4f6ef7',
             $d['icon_data'] ?? null,
             $d['icon_mime'] ?? 'image/png',

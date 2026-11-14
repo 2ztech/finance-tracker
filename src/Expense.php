@@ -251,6 +251,60 @@ final class Expense
     }
 
     /**
+     * Unpaid recurring transfers for an account in a month: money leaving
+     * (`out`) and money arriving (`in`).
+     *
+     * @return array{in:float,out:float}
+     */
+    public static function getUnpaidTransfers(string $month, string $year, ?int $accountId = null): array
+    {
+        if ($accountId === null) {
+            return ['in' => 0.0, 'out' => 0.0];
+        }
+        $db = Database::getConnection();
+        $monthKey = sprintf('%04d-%02d', (int) $year, (int) $month);
+
+        $stmt = $db->prepare("SELECT id, amount, account_id, to_account_id, start_date, end_date
+            FROM commitments
+            WHERE type = 'transfer' AND archived = 0 AND (account_id = ? OR to_account_id = ?)");
+        $stmt->execute([$accountId, $accountId]);
+
+        $items = [];
+        foreach ($stmt->fetchAll() as $c) {
+            if (!empty($c['start_date']) && $monthKey < substr((string) $c['start_date'], 0, 7)) continue;
+            if (!empty($c['end_date']) && $monthKey > substr((string) $c['end_date'], 0, 7)) continue;
+            $items[] = $c;
+        }
+        if ($items === []) {
+            return ['in' => 0.0, 'out' => 0.0];
+        }
+
+        $ids = array_map(static fn (array $c): int => (int) $c['id'], $items);
+        $place = implode(',', array_fill(0, count($ids), '?'));
+        $postedStmt = $db->prepare("SELECT commitment_id, COALESCE(SUM(amount), 0) AS paid
+            FROM transfers WHERE commitment_id IN ($place) AND commitment_period = ?
+            GROUP BY commitment_id");
+        $postedStmt->execute([...$ids, $monthKey]);
+        $posted = [];
+        foreach ($postedStmt->fetchAll() as $row) {
+            $posted[(int) $row['commitment_id']] = (float) $row['paid'];
+        }
+
+        $in = 0.0;
+        $out = 0.0;
+        foreach ($items as $c) {
+            $unpaid = max((float) $c['amount'] - ($posted[(int) $c['id']] ?? 0.0), 0.0);
+            if ((int) $c['account_id'] === $accountId) {
+                $out += $unpaid;
+            }
+            if ((int) $c['to_account_id'] === $accountId) {
+                $in += $unpaid;
+            }
+        }
+        return ['in' => round($in, 2), 'out' => round($out, 2)];
+    }
+
+    /**
      * Projected cash at the end of a selected month, including unpaid recurring
      * items and liability bills still outstanding by that date, with the full
      * breakdown so the UI can show how the figure was reached.
@@ -265,7 +319,8 @@ final class Expense
             return [
                 'account_id' => null, 'month' => (string) ($month ?? date('m')), 'year' => (string) ($year ?? date('Y')),
                 'month_end' => null, 'balance' => 0.0, 'recurring_income' => 0.0, 'recurring_expense' => 0.0,
-                'recurring_net' => 0.0, 'bills' => 0.0, 'bills_by_account' => [], 'eom' => 0.0,
+                'recurring_net' => 0.0, 'transfer_in' => 0.0, 'transfer_out' => 0.0, 'transfer_net' => 0.0,
+                'bills' => 0.0, 'bills_by_account' => [], 'eom' => 0.0,
             ];
         }
 
@@ -289,11 +344,16 @@ final class Expense
         // missed September posting remains reflected in an October projection.
         $unpaidInc = 0.0;
         $unpaidExp = 0.0;
+        $unpaidTransferIn = 0.0;
+        $unpaidTransferOut = 0.0;
         $cursor = new DateTimeImmutable($firstForecastMonth . '-01');
         $lastMonth = new DateTimeImmutable($requestedMonth . '-01');
         while ($cursor <= $lastMonth) {
             $unpaidInc += self::getUnpaidRecurring('income', $cursor->format('m'), $cursor->format('Y'), $accountId);
             $unpaidExp += self::getUnpaidRecurring('expense', $cursor->format('m'), $cursor->format('Y'), $accountId);
+            $transfers = self::getUnpaidTransfers($cursor->format('m'), $cursor->format('Y'), $accountId);
+            $unpaidTransferIn += $transfers['in'];
+            $unpaidTransferOut += $transfers['out'];
             $cursor = $cursor->modify('+1 month');
         }
 
@@ -315,6 +375,8 @@ final class Expense
         $balance = round($balance, 2);
         $unpaidInc = round($unpaidInc, 2);
         $unpaidExp = round($unpaidExp, 2);
+        $unpaidTransferIn = round($unpaidTransferIn, 2);
+        $unpaidTransferOut = round($unpaidTransferOut, 2);
         $outstandingBills = round($outstandingBills, 2);
 
         return [
@@ -326,9 +388,12 @@ final class Expense
             'recurring_income' => $unpaidInc,
             'recurring_expense' => $unpaidExp,
             'recurring_net' => round($unpaidInc - $unpaidExp, 2),
+            'transfer_in' => $unpaidTransferIn,
+            'transfer_out' => $unpaidTransferOut,
+            'transfer_net' => round($unpaidTransferIn - $unpaidTransferOut, 2),
             'bills' => $outstandingBills,
             'bills_by_account' => $billsByAccount,
-            'eom' => round($balance + $unpaidInc - $unpaidExp - $outstandingBills, 2),
+            'eom' => round($balance + $unpaidInc - $unpaidExp + $unpaidTransferIn - $unpaidTransferOut - $outstandingBills, 2),
         ];
     }
 
@@ -359,9 +424,12 @@ final class Expense
     private static function commitmentsQuery(?int $accountId, int $archived): array
     {
         $db = Database::getConnection();
-        $sql = "SELECT c.*, cat.name AS category_name, cat.color_hex, cat.icon_key, cat.icon_data, cat.icon_mime
+        $sql = "SELECT c.*, cat.name AS category_name, cat.color_hex, cat.icon_key, cat.icon_data, cat.icon_mime,
+                       fa.name AS from_account_name, ta.name AS to_account_name
                 FROM commitments c
                 LEFT JOIN categories cat ON c.category_id = cat.id
+                LEFT JOIN accounts fa ON fa.id = c.account_id
+                LEFT JOIN accounts ta ON ta.id = c.to_account_id
                 WHERE c.archived = ?";
         $params = [$archived];
         if ($accountId !== null) {
@@ -381,25 +449,28 @@ final class Expense
         return round((float) $stmt->fetchColumn(), 2);
     }
 
-    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
+    public static function addCommitment(string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null, ?int $toAccountId = null): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date, account_id, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)");
-        return $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId]);
+        $stmt = $db->prepare("INSERT INTO commitments (name, amount, type, due_date_day, category_id, start_date, end_date, account_id, to_account_id, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
+        return $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId, $toAccountId]);
     }
 
-    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null): bool
+    public static function updateCommitment(int $id, string $name, float $amount, string $type, int $due_date_day, ?int $category_id = null, ?string $start_date = null, ?string $end_date = null, ?int $accountId = null, ?int $toAccountId = null): bool
     {
         $db = Database::getConnection();
 
-        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ?, account_id = ? WHERE id = ?");
-        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId, $id]);
+        $stmt = $db->prepare("UPDATE commitments SET name = ?, amount = ?, type = ?, due_date_day = ?, category_id = ?, start_date = ?, end_date = ?, account_id = ?, to_account_id = ? WHERE id = ?");
+        $success = $stmt->execute([$name, $amount, $type, $due_date_day, $category_id, $start_date, $end_date, $accountId, $toAccountId, $id]);
 
         if ($success) {
-            // Propagate definitions to every auto-generated transaction by id.
-            // Dates of already-posted rows are intentionally left untouched so
-            // the ledger keeps the real posting date.
-            self::propagateCommitmentToTransactions($id, $name, $type, $amount, $category_id, $accountId);
+            // Propagate definitions to already-posted rows by id. Posted dates
+            // are untouched so the ledger keeps the real posting date.
+            if ($type === 'transfer') {
+                self::propagateCommitmentToTransfers($id, $name, $amount, $accountId, $toAccountId);
+            } else {
+                self::propagateCommitmentToTransactions($id, $name, $type, $amount, $category_id, $accountId);
+            }
         }
         return $success;
     }
@@ -415,6 +486,17 @@ final class Expense
         $db = Database::getConnection();
         $stmt = $db->prepare("UPDATE transactions SET description = ?, amount = ?, type = ?, category_id = ?, account_id = ? WHERE commitment_id = ?");
         $stmt->execute(['[Auto] ' . $name, $amount, $type, $categoryId, $accountId, $id]);
+    }
+
+    /** Propagate definitions onto already-posted automatic transfers. */
+    private static function propagateCommitmentToTransfers(int $id, string $name, float $amount, ?int $fromId, ?int $toId): void
+    {
+        if ($fromId === null || $toId === null || $fromId === $toId) {
+            return;
+        }
+        $db = Database::getConnection();
+        $stmt = $db->prepare("UPDATE transfers SET description = ?, amount = ?, from_account_id = ?, to_account_id = ? WHERE commitment_id = ?");
+        $stmt->execute(['[Auto] ' . $name, $amount, $fromId, $toId, $id]);
     }
 
     /** Stop future occurrences but keep the schedule and all history. */
@@ -458,8 +540,11 @@ final class Expense
     public static function currentPeriodPosted(int $id): bool
     {
         $db = Database::getConnection();
-        $stmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
-        $stmt->execute([$id, date('Y-m')]);
+        $period = date('Y-m');
+        $stmt = $db->prepare("SELECT
+            (SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?) +
+            (SELECT COUNT(*) FROM transfers WHERE commitment_id = ? AND commitment_period = ?)");
+        $stmt->execute([$id, $period, $id, $period]);
         return (int) $stmt->fetchColumn() > 0;
     }
 
@@ -478,17 +563,29 @@ final class Expense
         }
 
         $period = date('Y-m');
-        $check = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
-        $check->execute([$id, $period]);
+        $check = $db->prepare("SELECT
+            (SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?) +
+            (SELECT COUNT(*) FROM transfers WHERE commitment_id = ? AND commitment_period = ?)");
+        $check->execute([$id, $period, $id, $period]);
         if ((int) $check->fetchColumn() > 0) {
             return false;
+        }
+
+        $type = $c['type'] ?? 'expense';
+        if ($type === 'transfer') {
+            $from = (int) ($c['account_id'] ?? 0);
+            $to = (int) ($c['to_account_id'] ?? 0);
+            if ($from <= 0 || $to <= 0 || $from === $to) {
+                return false;
+            }
+            return Transfer::create($from, $to, (float) $c['amount'], date('Y-m-d'), '[Auto] ' . $c['name'], 'internal', $id, $period) > 0;
         }
 
         $ins = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id, commitment_id, commitment_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         return $ins->execute([
             $c['category_id'],
             $c['amount'],
-            $c['type'] ?? 'expense',
+            $type,
             '[Auto] ' . $c['name'],
             date('Y-m-d'),
             $c['account_id'],
@@ -539,6 +636,7 @@ final class Expense
         // This is the source of truth: delete a posted transaction and the month
         // becomes uncovered again, so the next run re-posts it.
         $postedStmt = $db->prepare("SELECT COUNT(*) FROM transactions WHERE commitment_id = ? AND commitment_period = ?");
+        $postedTransferStmt = $db->prepare("SELECT COUNT(*) FROM transfers WHERE commitment_id = ? AND commitment_period = ?");
         $legacyStmt = $db->prepare("SELECT id FROM transactions WHERE description = ? AND type = ? AND date = ?");
         $linkStmt = $db->prepare("UPDATE transactions SET commitment_id = ?, commitment_period = ? WHERE id = ?");
         $insertStmt = $db->prepare("INSERT INTO transactions (category_id, amount, type, description, date, account_id, commitment_id, commitment_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -578,16 +676,27 @@ final class Expense
                     $afterStart = empty($c['start_date']) || $period >= substr((string) $c['start_date'], 0, 7);
                     $beforeEnd = empty($c['end_date']) || $period <= substr((string) $c['end_date'], 0, 7);
                     if ($afterStart && $beforeEnd) {
-                        $postedStmt->execute([$cid, $period]);
-                        if ((int) $postedStmt->fetchColumn() === 0) {
-                            // Adopt a legacy "[Auto]" row for this month instead of
-                            // inserting a duplicate that predates the id link.
-                            $legacyStmt->execute([$desc, $type, $dueDateStr]);
-                            $existingId = $legacyStmt->fetchColumn();
-                            if ($existingId) {
-                                $linkStmt->execute([$cid, $period, (int) $existingId]);
-                            } else {
-                                $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr, $c['account_id'], $cid, $period]);
+                        if ($type === 'transfer') {
+                            $postedTransferStmt->execute([$cid, $period]);
+                            if ((int) $postedTransferStmt->fetchColumn() === 0) {
+                                $from = (int) ($c['account_id'] ?? 0);
+                                $to = (int) ($c['to_account_id'] ?? 0);
+                                if ($from > 0 && $to > 0 && $from !== $to) {
+                                    Transfer::create($from, $to, (float) $c['amount'], $dueDateStr, $desc, 'internal', $cid, $period);
+                                }
+                            }
+                        } else {
+                            $postedStmt->execute([$cid, $period]);
+                            if ((int) $postedStmt->fetchColumn() === 0) {
+                                // Adopt a legacy "[Auto]" row for this month instead of
+                                // inserting a duplicate that predates the id link.
+                                $legacyStmt->execute([$desc, $type, $dueDateStr]);
+                                $existingId = $legacyStmt->fetchColumn();
+                                if ($existingId) {
+                                    $linkStmt->execute([$cid, $period, (int) $existingId]);
+                                } else {
+                                    $insertStmt->execute([$c['category_id'], $c['amount'], $type, $desc, $dueDateStr, $c['account_id'], $cid, $period]);
+                                }
                             }
                         }
                     }
