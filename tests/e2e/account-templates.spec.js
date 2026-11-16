@@ -195,9 +195,10 @@ test.describe('Institution templates', () => {
     await expect(page.locator('body')).toContainText('Financing bills');
     await expect(page.locator('body')).not.toContainText('PayLater bills');
 
-    // The PF entry in the sidebar opens the Financing page (not the dashboard).
+    // Section switching always lands on the dashboard; the Financing page is
+    // reached from the sidebar link instead.
     await page.locator('[data-section-nav]', { hasText: 'BILL_PF' }).click();
-    await expect(page).toHaveURL(/\/financing/);
+    await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.locator('body')).toContainText('BILL_PF');
   });
 

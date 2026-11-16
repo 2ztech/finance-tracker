@@ -187,36 +187,6 @@ function dashboardDelta(float $current, float $previous): string {
     return ($pct >= 0 ? '+' : '') . number_format($pct, 1) . '% vs last month';
 }
 
-function dashboardMerchantMark(string $description, string $category, bool $income): array {
-    $name = strtolower($description);
-    $marks = [
-        'grab' => ['G', '#00a86b', '#e7f8ef'],
-        'shopee' => ['S', '#ee4d2d', '#fff0eb'],
-        'shell' => ['S', '#e23b35', '#fff4d6'],
-        'tng' => ['T', '#1749b8', '#eaf1ff'],
-        'salary' => ['↗', '#2774d8', '#eaf2ff'],
-        'maybank' => ['M', '#e8b600', '#fff8d8'],
-        'cimb' => ['C', '#df2935', '#ffedef'],
-    ];
-    foreach ($marks as $needle => $mark) if (str_contains($name, $needle)) return $mark;
-    $category = strtolower($category);
-    $categoryMarks = [
-        'salary' => ['↑', '#159b7e', '#e7f8f3'],
-        'food' => ['F', '#e34f52', '#ffeded'],
-        'grocer' => ['G', '#689d18', '#eff8dd'],
-        'shopping' => ['S', '#df6b34', '#fff0e8'],
-        'fuel' => ['P', '#db7425', '#fff3e5'],
-        'transport' => ['T', '#397dcc', '#eaf2ff'],
-        'motorcycle' => ['M', '#64748b', '#edf1f6'],
-        'entertainment' => ['E', '#7056c8', '#f0edff'],
-        'utilities' => ['U', '#b58413', '#fff8d8'],
-        'subscription' => ['▶', '#7959c9', '#f0ecff'],
-        'health' => ['+', '#d24c91', '#ffedf6'],
-    ];
-    foreach ($categoryMarks as $needle => $mark) if (str_contains($category, $needle)) return $mark;
-    return $income ? ['+', '#159b7e', '#e7f8f3'] : ['−', '#e34f52', '#fdecec'];
-}
-
 ob_start();
 ?>
 <div class="dashboard-screen">
@@ -329,9 +299,9 @@ ob_start();
     <section class="overflow-hidden rounded-xl border xl:col-span-8" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <div class="flex items-center justify-between border-b px-5 py-4" style="border-color:var(--border-light);"><div><h3 class="text-base font-semibold">Recent Transactions</h3><p class="mt-1 text-xs" style="color:var(--text-secondary);">Latest activity for <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></p></div><a href="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="text-sm font-medium" style="color:var(--accent);">View all →</a></div>
         <?php if (!$recent): ?><div class="px-5 py-12 text-center"><p class="text-sm font-medium">No transactions yet</p><p class="mt-1 text-sm" style="color:var(--text-secondary);">Add a transaction to see activity here.</p><a href="/transactions" class="mt-4 inline-block text-sm font-semibold" style="color:var(--accent);">Go to Transactions</a></div>
-        <?php else: ?><div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr style="background:var(--bg-hover);color:var(--text-secondary);"><th class="px-5 py-3">Date</th><th class="px-4 py-3">Description</th><th class="px-4 py-3">Category</th><th class="hidden px-4 py-3 lg:table-cell">Account</th><th class="px-5 py-3 text-right">Amount</th></tr></thead><tbody>
-            <?php foreach ($recent as $tx): $isIncome = $tx['type'] === 'income'; [$mark, $markColor, $markSoft] = dashboardMerchantMark((string)$tx['description'], (string)($tx['category_name'] ?? ''), $isIncome); ?>
-            <tr class="border-t" style="border-color:var(--border-light);"><td class="whitespace-nowrap px-5 py-3 text-xs" style="color:var(--text-secondary);"> <?= date('d M', strtotime($tx['date'])) ?></td><td class="max-w-52 px-4 py-3"><div class="flex min-w-0 items-center gap-2.5"><span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold" style="color:<?= $markColor ?>;background:<?= $markSoft ?>;"> <?= htmlspecialchars($mark, ENT_QUOTES, 'UTF-8') ?></span><span class="truncate font-medium" style="color:var(--text);"> <?= htmlspecialchars((string)$tx['description'], ENT_QUOTES, 'UTF-8') ?></span></div></td><td class="px-4 py-3 text-xs"><span class="mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md align-middle" style="color:<?= htmlspecialchars((string)($tx['color_hex'] ?? '#8A94A6'), ENT_QUOTES, 'UTF-8') ?>;background:color-mix(in srgb, <?= htmlspecialchars((string)($tx['color_hex'] ?? '#8A94A6'), ENT_QUOTES, 'UTF-8') ?> 14%, white);"><?php if (!empty($tx['icon_data'])): ?><img class="h-4 w-4 rounded object-contain" src="data:<?= htmlspecialchars((string)($tx['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$tx['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><?= IconCatalog::svg((string)($tx['icon_key'] ?? 'other'), 'h-4 w-4') ?><?php endif; ?></span><?= htmlspecialchars((string)($tx['category_name'] ?? 'Uncategorized'), ENT_QUOTES, 'UTF-8') ?></td><td class="hidden px-4 py-3 text-xs lg:table-cell" style="color:var(--text-secondary);"> <?= htmlspecialchars((string)($tx['account_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td><td class="whitespace-nowrap px-5 py-3 text-right font-semibold" style="color:<?= $isIncome ? 'var(--income)' : 'var(--expense)' ?>;"> <?= $isIncome ? '+' : '−' ?>RM <?= number_format((float)$tx['amount'], 2) ?></td></tr>
+        <?php else: ?><div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr style="background:var(--bg-hover);color:var(--text-secondary);"><th class="px-5 py-3">Date</th><th class="px-5 py-3">Description</th><th class="px-4 py-3">Category</th><th class="hidden px-4 py-3 lg:table-cell">Account</th><th class="px-5 py-3 text-right">Amount</th></tr></thead><tbody>
+            <?php foreach ($recent as $tx): $isIncome = $tx['type'] === 'income'; ?>
+            <tr class="border-t" style="border-color:var(--border-light);"><td class="whitespace-nowrap px-5 py-3 text-xs" style="color:var(--text-secondary);"> <?= date('d M', strtotime($tx['date'])) ?></td><td class="max-w-52 px-5 py-3"><span class="block truncate font-medium" style="color:var(--text);"><?= htmlspecialchars((string)$tx['description'], ENT_QUOTES, 'UTF-8') ?></span></td><td class="px-4 py-3 text-xs"><span class="mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md align-middle" style="color:<?= htmlspecialchars((string)($tx['color_hex'] ?? '#8A94A6'), ENT_QUOTES, 'UTF-8') ?>;background:color-mix(in srgb, <?= htmlspecialchars((string)($tx['color_hex'] ?? '#8A94A6'), ENT_QUOTES, 'UTF-8') ?> 14%, white);"><?php if (!empty($tx['icon_data'])): ?><img class="h-4 w-4 rounded object-contain" src="data:<?= htmlspecialchars((string)($tx['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$tx['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><?= IconCatalog::svg((string)($tx['icon_key'] ?? 'other'), 'h-4 w-4') ?><?php endif; ?></span><?= htmlspecialchars((string)($tx['category_name'] ?? 'Uncategorized'), ENT_QUOTES, 'UTF-8') ?></td><td class="hidden px-4 py-3 text-xs lg:table-cell" style="color:var(--text-secondary);"> <?= htmlspecialchars((string)($tx['account_name'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td><td class="whitespace-nowrap px-5 py-3 text-right font-semibold" style="color:<?= $isIncome ? 'var(--income)' : 'var(--expense)' ?>;"> <?= $isIncome ? '+' : '−' ?>RM <?= number_format((float)$tx['amount'], 2) ?></td></tr>
             <?php endforeach; ?>
         </tbody></table></div><?php endif; ?>
     </section>
@@ -339,23 +309,68 @@ ob_start();
     <section class="rounded-xl border p-5 xl:col-span-4" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <div class="mb-4 flex items-center justify-between"><h3 class="text-base font-semibold">Accounts Overview</h3><a href="/accounts" class="text-sm font-medium" style="color:var(--accent);">See all</a></div>
         <?php if (!$institutionGroups): ?><p class="py-8 text-center text-sm" style="color:var(--text-muted);">No accounts yet. <a href="/accounts" style="color:var(--accent);">Add an account</a></p>
-        <?php else: ?><div class="divide-y" style="--tw-divide-opacity:1;divide-color:var(--border-light);">
-            <?php foreach ($institutionGroups as $inst): ?>
-                <?php
+        <?php else: ?><div class="accounts-overview divide-y" style="--tw-divide-opacity:1;divide-color:var(--border-light);">
+            <?php foreach ($institutionGroups as $inst):
+                $sections = $inst['sections'] ?? [];
                 $instIconSrc = null;
                 if (!empty($inst['icon_data'])) {
                     $instIconSrc = 'data:' . (string) ($inst['icon_mime'] ?? 'image/png') . ';base64,' . (string) $inst['icon_data'];
                 } else {
                     $instIconSrc = InstitutionTemplate::logoUrlForName((string) $inst['name']);
                 }
-                ?>
-                <div class="flex items-center gap-2 pb-1 pt-3">
-                    <?php if ($instIconSrc): ?><img class="h-5 w-5 rounded object-contain" src="<?= htmlspecialchars($instIconSrc, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php endif; ?>
-                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--text-muted);"><?= htmlspecialchars((string) $inst['name'], ENT_QUOTES, 'UTF-8') ?></span>
-                </div>
-                <?php foreach ($inst['sections'] as $a): $bal = Account::balance((int)$a['id']); $liability = Account::isLiability($a); $accountIcon = AccountIcon::for((string)$a['name'], (string)$a['kind'], (string)($a['color_hex'] ?? '')); $sectionLabel = (string)$a['name']; $limitAmount = ($a['credit_limit'] ?? null) !== null ? (float) $a['credit_limit'] : 0.0; $hasLimit = $liability && $limitAmount > 0; $available = $hasLimit ? max(0.0, $limitAmount - max(0.0, $bal)) : 0.0; ?>
-                <div class="flex items-center justify-between gap-2 py-2"><div class="flex min-w-0 items-center gap-2.5"><?php if (!empty($a['icon_data'])): ?><img class="h-8 w-8 shrink-0 rounded-lg object-contain" src="data:<?= htmlspecialchars((string)($a['icon_mime'] ?? 'image/png'), ENT_QUOTES, 'UTF-8') ?>;base64,<?= htmlspecialchars((string)$a['icon_data'], ENT_QUOTES, 'UTF-8') ?>" alt=""><?php elseif ($instIconSrc): ?><img class="h-8 w-8 shrink-0 rounded-lg object-contain" src="<?= htmlspecialchars($instIconSrc, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold" style="background:<?= $accountIcon['background'] ?>;color:<?= $accountIcon['foreground'] ?>;"><?= htmlspecialchars($accountIcon['mark'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?><div class="min-w-0"><p class="truncate text-sm font-medium"><?= htmlspecialchars($sectionLabel, ENT_QUOTES, 'UTF-8') ?></p><p class="mt-0.5 text-xs capitalize" style="color:var(--text-muted);"><?= htmlspecialchars((string)$a['kind'], ENT_QUOTES, 'UTF-8') ?><?= $liability ? ' · outstanding' : '' ?><?= $hasLimit ? ' · RM ' . number_format($available, 2) . ' available' : '' ?></p></div></div><b class="whitespace-nowrap text-sm" style="color:<?= $liability ? 'var(--expense)' : 'var(--text)' ?>;">RM <?= number_format($bal, 2) ?></b></div>
-                <?php endforeach; ?>
+                $instAssets = 0.0;
+                $instOwed = 0.0;
+                $hasLiabilities = false;
+                foreach ($sections as $section) {
+                    $sectionBalance = Account::balance((int) $section['id']);
+                    if (Account::isLiability($section)) {
+                        $instOwed += max(0.0, $sectionBalance);
+                        $hasLiabilities = true;
+                    } else {
+                        $instAssets += $sectionBalance;
+                    }
+                }
+                $instNet = round($instAssets - $instOwed, 2);
+                $sectionCount = count($sections);
+                $isMulti = $sectionCount > 1;
+                $isOpen = $activeInstitution !== null && (int) $inst['id'] === (int) $activeInstitution['id'];
+                $singleLiability = !$isMulti && $sectionCount === 1 && Account::isLiability($sections[0]);
+                $amountLabel = $singleLiability ? 'Owed' : ($hasLiabilities ? 'Net' : 'Balance');
+                $displayAmount = $singleLiability ? abs($instNet) : $instNet;
+                ob_start(); ?>
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style="background:var(--accent-soft);color:var(--accent);">
+                    <?php if ($instIconSrc): ?><img class="h-8 w-8 rounded-lg object-contain" src="<?= htmlspecialchars($instIconSrc, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><span class="text-xs font-bold"><?= htmlspecialchars(mb_strtoupper(mb_substr((string) $inst['name'], 0, 1)), ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?>
+                </span>
+                <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-medium" style="color:var(--text);"><?= htmlspecialchars((string) $inst['name'], ENT_QUOTES, 'UTF-8') ?></span>
+                    <span class="block text-[11px]" style="color:var(--text-muted);"><?= $isMulti ? $sectionCount . ' sections' : ($sectionCount === 1 ? htmlspecialchars(Institution::sectionRoleLabel($sections[0]), ENT_QUOTES, 'UTF-8') : 'No sections') ?></span>
+                </span>
+                <span class="shrink-0 text-right">
+                    <span class="block text-sm font-semibold" style="color:<?= ($singleLiability || $displayAmount < 0) ? 'var(--expense)' : 'var(--text)' ?>;"><?= $displayAmount < 0 ? '−' : '' ?>RM <?= number_format(abs($displayAmount), 2) ?></span>
+                    <span class="block text-[10px]" style="color:var(--text-muted);"><?= $amountLabel ?></span>
+                </span>
+                <?php $instSummary = ob_get_clean(); ?>
+                <?php if ($isMulti): ?>
+                <details class="accounts-overview-group" <?= $isOpen ? 'open' : '' ?>>
+                    <summary class="accounts-overview-summary flex items-center gap-2.5 py-2.5">
+                        <?= $instSummary ?>
+                        <svg class="accounts-chevron h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </summary>
+                    <div class="accounts-overview-sections">
+                        <?php foreach ($sections as $a): $bal = Account::balance((int) $a['id']); $liability = Account::isLiability($a); ?>
+                        <div class="accounts-overview-section flex items-center justify-between gap-2 py-1.5 pl-11">
+                            <span class="flex min-w-0 items-center gap-2">
+                                <span class="truncate text-xs font-medium" style="color:var(--text);" title="<?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8') ?></span>
+                                <span class="shrink-0 text-[10px]" style="color:var(--text-muted);"><?= htmlspecialchars(Institution::sectionRoleLabel($a), ENT_QUOTES, 'UTF-8') ?></span>
+                            </span>
+                            <span class="whitespace-nowrap text-xs font-semibold" style="color:<?= $liability ? 'var(--expense)' : 'var(--text)' ?>;"><?= $liability ? 'RM ' . number_format(max(0.0, $bal), 2) . ' owed' : 'RM ' . number_format($bal, 2) ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+                <?php else: ?>
+                <div class="flex items-center gap-2.5 py-2.5"><?= $instSummary ?></div>
+                <?php endif; ?>
             <?php endforeach; ?>
         </div><?php endif; ?>
     </section>

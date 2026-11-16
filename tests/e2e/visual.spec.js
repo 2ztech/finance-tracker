@@ -26,7 +26,7 @@ test.describe('UI smoke / console health', () => {
       }
     }
 
-    const pages = ['/dashboard', '/transactions', '/recurring', '/budgets', '/categories', '/accounts', '/bills', '/settings'];
+    const pages = ['/dashboard', '/analytics', '/transactions', '/recurring', '/budgets', '/categories', '/accounts', '/bills', '/settings'];
     fs.mkdirSync('QA/screenshots', { recursive: true });
 
     for (const p of pages) {

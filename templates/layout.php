@@ -15,24 +15,33 @@ $activeAccount = Account::active();
 $activeId = $activeAccount ? (int) $activeAccount['id'] : 0;
 $netWorth = Account::netWorth();
 
-$accountNav = [
+// Personal: cross-account views (Analytics is global; Overview arrives with the
+// future global dashboard).
+$personalNav = [
+    'analytics' => ['label' => 'Analytics', 'icon' => 'analytics'],
+];
+
+// Workspace: pages that follow the active institution/section switcher above.
+$workspaceNav = [
     'dashboard'    => ['label' => 'Dashboard',    'icon' => 'home'],
     'transactions' => ['label' => 'Transactions', 'icon' => 'document'],
 ];
-if ($liabilitySections !== []) {
-    $accountNav['bills'] = ['label' => 'Bills', 'icon' => 'bill'];
-}
-$accountNav['recurring'] = ['label' => 'Recurring', 'icon' => 'calendar'];
 $canFinance = $activeAccount !== null
     && ($activeAccount['kind'] ?? '') === 'paylater'
     && in_array($activeAccount['paylater_role'] ?? 'bnpl', ['financing', 'both'], true);
 if ($canFinance) {
-    $accountNav['financing'] = ['label' => 'Financing', 'icon' => 'wallet'];
+    $workspaceNav['financing'] = ['label' => 'Financing', 'icon' => 'wallet'];
 }
-$globalNav = [
-    'budgets'    => ['label' => 'Budgets',    'icon' => 'chart'],
-    'categories' => ['label' => 'Categories', 'icon' => 'tag'],
+if ($liabilitySections !== []) {
+    $workspaceNav['bills'] = ['label' => 'Bills', 'icon' => 'bill'];
+}
+$workspaceNav['recurring'] = ['label' => 'Recurring', 'icon' => 'calendar'];
+$workspaceNav['budgets']   = ['label' => 'Budgets',   'icon' => 'chart'];
+
+// Manage: configuration and data administration.
+$manageNav = [
     'accounts'   => ['label' => 'Accounts',   'icon' => 'wallet'],
+    'categories' => ['label' => 'Categories', 'icon' => 'tag'],
 ];
 
 $returnPath = $_SERVER['REQUEST_URI'] ?? '/dashboard';
@@ -46,6 +55,7 @@ function navIcon(string $icon): string
         'bill' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>',
         'tag' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>',
         'chart' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
+        'analytics' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3v18h18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 15l3.5-4 3 2.5L18 7"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 7v4M18 7h-4"/></svg>',
         'wallet' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>',
         'cog' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
         'import' => '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"/></svg>',
@@ -107,8 +117,8 @@ function navIcon(string $icon): string
             <div>
                 <p class="mb-1 block text-[11px] font-medium" style="color:var(--text-muted);">Sections</p>
                 <div class="space-y-1">
-                    <?php foreach ($sections as $section): $sectionActive = (int) $section['id'] === $activeId; $sectionTarget = ($section['kind'] === 'paylater' && ($section['paylater_role'] ?? '') === 'financing') ? '/financing' : '/dashboard'; ?>
-                    <button type="button" data-section-nav="<?= (int) $section['id'] ?>" onclick="activateSection(<?= (int) $section['id'] ?>, '<?= $sectionTarget ?>')" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors" style="<?= $sectionActive ? 'background:var(--accent-soft);color:var(--accent);' : 'color:var(--text-secondary);' ?>">
+                    <?php foreach ($sections as $section): $sectionActive = (int) $section['id'] === $activeId; ?>
+                    <button type="button" data-section-nav="<?= (int) $section['id'] ?>" onclick="activateSection(<?= (int) $section['id'] ?>, '/dashboard')" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors" style="<?= $sectionActive ? 'background:var(--accent-soft);color:var(--accent);' : 'color:var(--text-secondary);' ?>">
                         <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold" style="background:var(--bg-hover);color:var(--text-secondary);"><?= htmlspecialchars(mb_substr((string) $section['name'], 0, 1), ENT_QUOTES, 'UTF-8') ?></span>
                         <span class="min-w-0">
                             <span class="block truncate text-sm font-medium"><?= htmlspecialchars((string) $section['name'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -136,12 +146,18 @@ function navIcon(string $icon): string
                     echo htmlspecialchars((string) $item['label'], ENT_QUOTES, 'UTF-8') . '</a>';
                 }
             };
-            $renderNav($accountNav);
+            $navGroupLabel = static function (string $label): string {
+                return '<p class="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted);">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</p>';
+            };
             ?>
+            <?= $navGroupLabel('Personal') ?>
+            <?php $renderNav($personalNav); ?>
             <div class="my-2 border-t" style="border-color:var(--border);"></div>
-            <?php $renderNav($globalNav); ?>
+            <?= $navGroupLabel('Workspace') ?>
+            <?php $renderNav($workspaceNav); ?>
             <div class="my-2 border-t" style="border-color:var(--border);"></div>
-            <p class="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider" style="color:var(--text-muted);">Manage</p>
+            <?= $navGroupLabel('Manage') ?>
+            <?php $renderNav($manageNav); ?>
             <?php foreach ([
                 ['href' => '/settings#data-management', 'label' => 'Import / Export', 'icon' => 'import'],
                 ['href' => '/settings#restore-database', 'label' => 'Backup & Restore', 'icon' => 'database'],

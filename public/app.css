@@ -86,3 +86,36 @@ input[type=color] { border: 0; }
   #editModal > div, #payModal > div, #refundModal > div, #accountModal > div { max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 20px; }
   input, select, button { min-height: 40px; }
 }
+
+/* --- Analytics page --- */
+.analytics-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.analytics-widget { min-width: 0; }
+.analytics-chart canvas { max-height: 200px; }
+.analytics-add-tile { min-height: 120px; cursor: pointer; transition: border-color .15s ease, color .15s ease; }
+.analytics-add-tile:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
+.analytics-add-option.is-used, .analytics-add-option:disabled { opacity: .5; cursor: not-allowed; }
+.analytics-ctl {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--bg-alt); color: var(--text-secondary); font-size: 13px; line-height: 1;
+  cursor: pointer; transition: background-color .15s ease, color .15s ease;
+}
+.analytics-ctl:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.analytics-ctl:disabled { opacity: .35; cursor: default; }
+@media (min-width: 768px) {
+  .analytics-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .analytics-grid .span-6 { grid-column: span 6; }
+  .analytics-grid .span-8 { grid-column: span 8; }
+  .analytics-grid .span-12 { grid-column: span 12; }
+  .analytics-add-tile { grid-column: span 12; min-height: 0; }
+}
+
+/* --- Dashboard accounts overview --- */
+.accounts-overview summary { list-style: none; cursor: pointer; border-radius: 9px; }
+.accounts-overview summary::-webkit-details-marker { display: none; }
+.accounts-overview summary:hover { background: var(--bg-hover); }
+.accounts-overview .accounts-chevron { transition: transform .15s ease; }
+.accounts-overview details[open] > summary { background: var(--bg-hover); }
+.accounts-overview details[open] > summary .accounts-chevron { transform: rotate(90deg); }
+.accounts-overview-sections { padding-bottom: .4rem; }
+.accounts-overview-section + .accounts-overview-section { border-top: 1px solid var(--border-light); }

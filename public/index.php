@@ -56,6 +56,10 @@ set_exception_handler(function ($e) {
 // Initialize the database and ensure tables exist
 Database::getConnection();
 
+// JSON analytics API. Handled before the HTML CSRF/auth redirects so API
+// clients receive JSON errors instead of login redirects.
+AnalyticsApi::handleIfApi();
+
 Csrf::validate();
 
 // Basic Router
@@ -682,6 +686,7 @@ $routes = [
     'recurring' => 'recurring.php',
     'categories' => 'categories.php',
     'budgets' => 'budgets.php',
+    'analytics' => 'analytics.php',
     'settings' => 'settings.php',
     'settings/duplicates' => 'duplicates.php',
     'accounts' => 'accounts.php',

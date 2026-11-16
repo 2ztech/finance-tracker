@@ -14,6 +14,10 @@ test.describe('Personal Financing', () => {
     await expect(page).toHaveURL(/\/financing/);
     await expect(page.locator('body')).toContainText('FIN_PP');
     await expect(page.locator('#sidebar a[href="/financing"]')).toBeVisible();
+
+    const navLabels = await page.locator('#sidebar nav a').allTextContents();
+    expect(navLabels.findIndex((label) => label.includes('Transactions')))
+      .toBeLessThan(navLabels.findIndex((label) => label.includes('Financing')));
   });
 
   test('financing cashes in and produces a separate bill on the borrow day', async ({ page }) => {
