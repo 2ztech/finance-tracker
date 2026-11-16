@@ -224,7 +224,7 @@ ob_start();
         document.getElementById('analyticsCustomApply').classList.toggle('hidden', !custom);
     }
 </script>
-<script src="/analytics.js"></script>
+<script src="/analytics.js?v=<?= (int) @filemtime(__DIR__ . '/../public/analytics.js') ?>"></script>
 <?php
 $content = ob_get_clean();
 require __DIR__ . '/layout.php';

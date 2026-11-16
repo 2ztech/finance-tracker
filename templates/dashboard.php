@@ -278,7 +278,7 @@ ob_start();
 
 <div class="dashboard-grid grid grid-cols-1 gap-4 xl:grid-cols-12">
 <div class="dashboard-main space-y-4 xl:col-span-9">
-<div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+<div class="grid grid-cols-1 gap-4 xl:grid-cols-12 items-start">
     <section class="rounded-xl border p-4 xl:col-span-7" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <div class="mb-4 flex items-center justify-between gap-3"><div><h3 class="text-base font-semibold">Income vs Expenses</h3><p class="mt-1 text-xs" style="color:var(--text-secondary);">Monthly totals · last 9 months</p></div><div class="flex gap-4 text-xs"><span><i class="legend-dot" style="background:var(--success)"></i>Income</span><span><i class="legend-dot" style="background:var(--expense)"></i>Expenses</span></div></div>
         <?php if ($hasChartData): ?><div class="h-56"><canvas id="incomeExpenseChart" aria-label="Income and expenses over nine months"></canvas></div>
@@ -295,7 +295,7 @@ ob_start();
     </section>
 </div>
 
-<div class="grid grid-cols-1 gap-4 xl:grid-cols-12">
+<div class="grid grid-cols-1 gap-4 xl:grid-cols-12 items-start">
     <section class="overflow-hidden rounded-xl border xl:col-span-8" style="background:var(--bg-alt);border-color:var(--border);box-shadow:var(--shadow);">
         <div class="flex items-center justify-between border-b px-5 py-4" style="border-color:var(--border-light);"><div><h3 class="text-base font-semibold">Recent Transactions</h3><p class="mt-1 text-xs" style="color:var(--text-secondary);">Latest activity for <?= htmlspecialchars((string)$currentDisplay, ENT_QUOTES, 'UTF-8') ?></p></div><a href="/transactions?month=<?= htmlspecialchars((string)$reqMonth, ENT_QUOTES, 'UTF-8') ?>" class="text-sm font-medium" style="color:var(--accent);">View all →</a></div>
         <?php if (!$recent): ?><div class="px-5 py-12 text-center"><p class="text-sm font-medium">No transactions yet</p><p class="mt-1 text-sm" style="color:var(--text-secondary);">Add a transaction to see activity here.</p><a href="/transactions" class="mt-4 inline-block text-sm font-semibold" style="color:var(--accent);">Go to Transactions</a></div>

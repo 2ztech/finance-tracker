@@ -198,19 +198,36 @@
         }
     };
 
+    var chartInstances = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+    function initChartOnCanvas(canvas) {
+        if (typeof Chart === 'undefined' || !canvas) return;
+        var payload;
+        try {
+            payload = JSON.parse(canvas.getAttribute('data-chart'));
+        } catch (e) {
+            return;
+        }
+        var renderer = RENDERERS[payload.key];
+        if (!renderer) return;
+        var cfg = renderer(payload.config || {}, payload.data || {});
+        var chart = new Chart(canvas.getContext('2d'), cfg);
+        if (chartInstances) chartInstances.set(canvas, chart);
+    }
+
     function initCharts() {
-        if (typeof Chart === 'undefined') return;
-        document.querySelectorAll('canvas[data-chart]').forEach(function (canvas) {
-            var payload;
-            try {
-                payload = JSON.parse(canvas.getAttribute('data-chart'));
-            } catch (e) {
-                return;
-            }
-            var renderer = RENDERERS[payload.key];
-            if (!renderer) return;
-            var cfg = renderer(payload.config || {}, payload.data || {});
-            new Chart(canvas.getContext('2d'), cfg);
+        document.querySelectorAll('canvas[data-chart]').forEach(initChartOnCanvas);
+    }
+
+    // Chart.js only resizes on window resize; layout class changes don't fire
+    // it, so re-fit after DOM mutations.
+    function resizeCharts() {
+        if (!chartInstances) return;
+        window.requestAnimationFrame(function () {
+            document.querySelectorAll('canvas[data-chart]').forEach(function (canvas) {
+                var chart = chartInstances.get(canvas);
+                if (chart) chart.resize();
+            });
         });
     }
 
@@ -218,7 +235,8 @@
 
     var state = window.ANALYTICS_STATE || null;
 
-    function persist(layout) {
+    function persist(layout, opts) {
+        var reload = !opts || opts.reload !== false;
         return fetch('/api/analytics/layout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf },
@@ -233,12 +251,17 @@
         }).then(function (body) {
             state.layout = body.layout;
             return body.layout;
-        }).then(function () {
-            window.location.href = state.editUrl;
+        }).then(function (saved) {
+            if (reload) {
+                window.location.href = state.editUrl;
+                return saved;
+            }
+            return saved;
         }).catch(function (err) {
             if (typeof window.appNotice === 'function') {
                 window.appNotice(err.message || 'Could not save the layout.');
             }
+            throw err;
         });
     }
 
@@ -257,31 +280,102 @@
         return id;
     }
 
+    var SIZE_TO_SPAN = { half: 'span-6', wide: 'span-8', full: 'span-12' };
+
+    function gridEl() {
+        return document.getElementById('analyticsGrid');
+    }
+
+    function widgetCards() {
+        return Array.from(document.querySelectorAll('#analyticsGrid .analytics-widget'));
+    }
+
+    // Enable/disable the move buttons based on the current DOM order.
+    function updateMoveButtons() {
+        var cards = widgetCards();
+        cards.forEach(function (card, index) {
+            var up = card.querySelector('[data-action="move"][data-dir="-1"]');
+            var down = card.querySelector('[data-action="move"][data-dir="1"]');
+            if (up) up.disabled = index === 0;
+            if (down) down.disabled = index === cards.length - 1;
+        });
+    }
+
+    // Persist the layout from the current DOM order without reloading.
+    function persistDomLayout() {
+        var layout = JSON.parse(JSON.stringify(state.layout));
+        var byId = {};
+        layout.widgets.forEach(function (w) { byId[w.id] = w; });
+        layout.widgets = widgetCards().map(function (card) {
+            var id = card.getAttribute('data-widget-id');
+            var w = byId[id];
+            if (w) {
+                var match = card.className.match(/span-(6|8|12)/);
+                if (match) {
+                    w.size = match[1] === '6' ? 'half' : (match[1] === '8' ? 'wide' : 'full');
+                }
+            }
+            return w;
+        }).filter(Boolean);
+        return persist(layout, { reload: false }).catch(function () {
+            // Resync with the server on failure.
+            window.location.href = state.editUrl;
+        });
+    }
+
     function handleAction(action, widgetEl) {
         var id = widgetEl.getAttribute('data-widget-id');
-        var layout = JSON.parse(JSON.stringify(state.layout));
-        var i = widgetIndex(id);
-        if (i === -1) return;
+        if (!id) return;
 
         if (action === 'remove') {
+            var layout = JSON.parse(JSON.stringify(state.layout));
+            var i = widgetIndex(id);
+            if (i === -1) return;
             layout.widgets.splice(i, 1);
-        } else if (action === 'resize') {
-            var order = ['half', 'wide', 'full'];
-            var current = layout.widgets[i].size;
-            layout.widgets[i].size = order[(order.indexOf(current) + 1) % order.length];
+            state.layout = layout;
+            widgetEl.remove();
+            updateMoveButtons();
+            if (widgetCards().length === 0) {
+                // Reload so the server-rendered empty state appears.
+                persist(layout);
+            } else {
+                persistDomLayout();
+            }
+            return;
         }
-        persist(layout);
+
+        if (action === 'resize') {
+            var order = ['half', 'wide', 'full'];
+            var span = null;
+            Object.keys(SIZE_TO_SPAN).forEach(function (s) {
+                if (widgetEl.classList.contains(SIZE_TO_SPAN[s])) {
+                    span = s;
+                }
+            });
+            var next = order[(order.indexOf(span || 'half') + 1) % order.length];
+            widgetEl.classList.remove('span-6', 'span-8', 'span-12');
+            widgetEl.classList.add(SIZE_TO_SPAN[next]);
+            resizeCharts();
+            persistDomLayout();
+        }
     }
 
     function moveWidget(widgetEl, dir) {
-        var id = widgetEl.getAttribute('data-widget-id');
-        var layout = JSON.parse(JSON.stringify(state.layout));
-        var i = widgetIndex(id);
-        var j = i + dir;
-        if (i === -1 || j < 0 || j >= layout.widgets.length) return;
-        var item = layout.widgets.splice(i, 1)[0];
-        layout.widgets.splice(j, 0, item);
-        persist(layout);
+        var grid = gridEl();
+        if (!grid) return;
+        if (dir < 0) {
+            var prev = widgetEl.previousElementSibling;
+            if (prev && prev.classList.contains('analytics-widget')) {
+                grid.insertBefore(widgetEl, prev);
+            }
+        } else {
+            var next = widgetEl.nextElementSibling;
+            if (next && next.classList.contains('analytics-widget')) {
+                grid.insertBefore(next, widgetEl);
+            }
+        }
+        updateMoveButtons();
+        persistDomLayout();
     }
 
     function widgetAlreadyAdded(key) {
@@ -424,7 +518,8 @@
         var configSave = document.getElementById('analyticsConfigSave');
 
         function openAddModal() {
-            syncAddOptions();
+        syncAddOptions();
+        updateMoveButtons();
             openModal('analyticsAddModal');
         }
 
